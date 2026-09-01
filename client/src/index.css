@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply focus-visible:outline focus-visible:outline-2 focus-visible:outline-seal focus-visible:outline-offset-2;
+  }
+  ::selection {
+    background: #12a78355;
+  }
+}
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.animate-spin-slow {
+  animation: spin-slow 10s linear infinite;
+}
