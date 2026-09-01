@@ -7,8 +7,11 @@ export default function Seal({ state = "pending", size = 72 }) {
     used: { ring: "#D5573B", mark: "#D5573B", label: "DUPLICATE" },
     mismatch: { ring: "#E2A63B", mark: "#E2A63B", label: "MISMATCH" },
     error: { ring: "#D5573B", mark: "#D5573B", label: "UNCONFIRMED" },
+    // Neutral BLACK state: we could not determine the outcome.
+    // Never red, never green.
+    unavailable: { ring: "#1F2937", mark: "#1F2937", label: "UNAVAILABLE" },
     pending: { ring: "#8CA0B3", mark: "#8CA0B3", label: "PENDING" },
-  }[state];
+  }[state] || { ring: "#8CA0B3", mark: "#8CA0B3", label: "PENDING" };
 
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" className={state === "valid" ? "animate-[stampIn_0.4s_ease-out]" : ""}>

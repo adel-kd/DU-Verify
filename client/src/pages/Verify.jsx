@@ -12,6 +12,8 @@ import TopBar from "../components/TopBar.jsx";
 import Footer from "../components/Footer.jsx";
 import Seal from "../components/Seal.jsx";
 import CameraCapture from "../components/CameraCapture.jsx";
+import AnnouncementBanner from "../components/AnnouncementBanner.jsx";
+import UnverifiedNotice from "../components/UnverifiedNotice.jsx";
 
 
 /* ============================================================
@@ -34,7 +36,8 @@ const SEAL_STATE = {
   RECEIVER_MISMATCH: "mismatch",
   NOT_VERIFIED: "error",
   OCR_FAILED: "error",
-  PROVIDER_ERROR: "error",
+  PROVIDER_ERROR: "unavailable",
+  PROVIDER_UNAVAILABLE: "unavailable",
   INVALID_FORMAT: "error",
 };
 
@@ -58,8 +61,11 @@ const RESULT_COPY = {
   OCR_FAILED:
     "Could not read this receipt.",
 
+  PROVIDER_UNAVAILABLE:
+    "We couldn't reliably reach the payment provider. This does not mean the payment is invalid. Please try again.",
+
   PROVIDER_ERROR:
-    "The provider couldn't confirm this transaction.",
+    "We couldn't reliably reach the payment provider. This does not mean the payment is invalid. Please try again.",
 
   INVALID_FORMAT:
     "This doesn't look like a valid receipt for the selected bank.",
@@ -69,6 +75,9 @@ const RESULT_COPY = {
 const OCR_FAILURE_COPY = {
   NOT_TRANSACTION:
     "This does not look like a payment receipt or USSD confirmation.",
+
+  CBE_USSD_NOT_ACCEPTED:
+    "CBE USSD results are not accepted.",
 
   TOO_BLURRY:
     "The image is too blurry to read the reference number. Please retake the photo.",
@@ -1072,6 +1081,12 @@ export default function Verify() {
 
       <main className="flex-1 w-full max-w-md mx-auto p-4 sm:p-6 space-y-4">
 
+        {/* Email verification gate */}
+        <UnverifiedNotice />
+
+        {/* Admin announcements */}
+        <AnnouncementBanner />
+
 
         {/* =====================================================
             LOW WALLET BALANCE
@@ -1659,6 +1674,12 @@ export default function Verify() {
 
             <div className="flex-1">
 
+              {result.providerName && (
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-sealDark">
+                  {result.providerName}
+                </p>
+              )}
+
               {/* RESULT MESSAGE */}
 
               <p className="text-sm text-ink/60 dark:text-mist">
@@ -1678,6 +1699,24 @@ export default function Verify() {
                     ])}
 
               </p>
+
+              {result.providerMessage &&
+                result.providerMessage !== result.userMessage && (
+                  <p className="text-xs text-ink/45 dark:text-mist mt-1">
+                    {result.providerMessage}
+                  </p>
+                )}
+
+              {result.providerLink && (
+                <a
+                  href={result.providerLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1 inline-block text-xs font-medium text-sealDark underline break-all"
+                >
+                  Open CBE receipt link
+                </a>
+              )}
 
 
               {/* CBE QR CONFIRMATION */}

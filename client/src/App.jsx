@@ -1,5 +1,10 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login.jsx";
+import VerifyOtp from "./pages/VerifyOtp.jsx";
+import ForgotPassword from "./pages/ForgotPassword.jsx";
+import CompleteProfile from "./pages/CompleteProfile.jsx";
+import VerifyEmail from "./pages/VerifyEmail.jsx";
+import AuthSuccess from "./pages/AuthSuccess.jsx";
 import Verify from "./pages/Verify.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Settings from "./pages/Settings.jsx";
@@ -22,13 +27,22 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={user ? <Navigate to={landingFor(user)} /> : <Login />} />
+      <Route path="/verify-otp" element={<VerifyOtp />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/complete-profile" element={<CompleteProfile />} />
+      <Route path="/verify-email" element={<VerifyEmail />} />
+      <Route path="/auth/success" element={<AuthSuccess />} />
       <Route path="/terms" element={<Terms />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route
         path="/verify"
         element={
           <ProtectedRoute>
-            <Verify />
+            {user?.role === "owner" && user?.accountMode === "team" ? (
+              <Navigate to="/dashboard" replace />
+            ) : (
+              <Verify />
+            )}
           </ProtectedRoute>
         }
       />
@@ -44,7 +58,13 @@ export default function App() {
         path="/settings"
         element={
           <ProtectedRoute>
-            <Settings />
+            {user?.role === "admin" ? (
+              <Navigate to="/admin" replace />
+            ) : user?.role === "owner" ? (
+              <Navigate to="/dashboard" replace />
+            ) : (
+              <Settings />
+            )}
           </ProtectedRoute>
         }
       />

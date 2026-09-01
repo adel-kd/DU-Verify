@@ -1,3 +1,4 @@
+
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import logoSmall from "../assets/verified-logo.png";
@@ -14,8 +15,6 @@ export default function TopBar({ dark = true }) {
    * ============================================================
    * CURRENT LOGGED-IN ACCOUNT
    * ============================================================
-   *
-   * IMPORTANT:
    *
    * owner -> owner's own name
    * staff -> staff member's own name
@@ -52,6 +51,15 @@ export default function TopBar({ dark = true }) {
   }
 
   const isAdmin = user?.role === "admin";
+
+  /*
+   * Client/owner dashboard must NOT show the Settings button.
+   *
+   * Settings remains available for staff.
+   */
+  const canShowSettings =
+    user?.role !== "owner" &&
+    user?.role !== "admin";
 
   return (
     <header
@@ -133,9 +141,15 @@ export default function TopBar({ dark = true }) {
 
         {/* ====================================================
             SETTINGS
-        ==================================================== */}
+        ====================================================
 
-        {!isAdmin && (
+            IMPORTANT:
+            - Owner/client admin -> HIDDEN
+            - Platform admin -> HIDDEN
+            - Staff -> SHOWN
+        */}
+
+        {canShowSettings && (
           <button
             type="button"
             onClick={() => nav("/settings")}

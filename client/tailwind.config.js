@@ -8,22 +8,23 @@ export default {
   theme: {
     extend: {
       colors: {
-        ink: "#0F1B2B",       // near-black indigo, primary background
-        panel: "#16263B",     // raised surface on dark backgrounds
-        paper: "#F7F5EF",     // warm off-white, light surfaces
-        seal: "#12A783",      // verification teal - the "stamped, confirmed" color
+        // Monochrome system: #222222 black / #FFFFFF white.
+        ink: "#222222",       // primary text on light / dark surfaces
+        panel: "#222222",     // raised surface on dark
+        paper: "#FFFFFF",     // light surfaces — pure white, no cream
+        seal: "#12A783",      // verification teal - the ONLY brand accent
         sealDark: "#0C7C63",
-        flag: "#E2A63B",      // amber for mismatches / attention
-        alarm: "#D5573B",     // used sparingly for failure states
-        mist: "#8CA0B3",      // muted secondary text on dark
-        line: "#26374D",      // hairline dividers on dark surfaces
+        flag: "#D5573B",      // caution — same red family as alarm
+        alarm: "#D5573B",     // failure / terminated states ONLY
+        mist: "#9A9A9A",      // muted secondary text (readable on #222)
+        line: "#3D3D3D",      // hairline dividers on dark
       },
       fontFamily: {
         display: ["\"Space Grotesk\"", "sans-serif"],
         body: ["\"Inter\"", "sans-serif"],
       },
-      backgroundImage: {
-        "seal-radial": "radial-gradient(circle at 30% 20%, rgba(18,167,131,0.18), transparent 60%)",
+      borderRadius: {
+        NONE: "0",
       },
     },
   },

@@ -97,41 +97,34 @@ export default function BillingPanel({
       return;
     }
 
-    // Give the backend callback/webhook a moment to finish
-    // before asking for the latest balance.
     let cancelled = false;
 
     async function syncAfterPayment() {
       setRefreshingBalance(true);
+      const txRef = params.get("tx_ref");
 
-      // Try immediately first.
-      let balance =
-        await refreshBalance();
-
-      if (cancelled) return;
-
-      // In some cases Chapa's callback and frontend redirect
-      // can arrive almost simultaneously. If the webhook has not
-      // finished yet, retry briefly.
-      if (
-        topupStatus === "success" &&
-        balance !== null
-      ) {
-        for (let i = 0; i < 4; i++) {
-          if (cancelled) return;
-
-          await new Promise((resolve) =>
-            setTimeout(resolve, 1000)
-          );
-
-          balance =
-            await refreshBalance();
-
-          if (cancelled) return;
+      try {
+        // Confirm from the return page as well as through Chapa's callback.
+        // This closes the callback race and triggers the receipt email.
+        if (txRef) {
+          for (let i = 0; i < 5 && !cancelled; i++) {
+            try {
+              const { data } = await api.post(`/billing/confirm/${encodeURIComponent(txRef)}`);
+              if (data.duptBalance != null && onBalanceChange) {
+                onBalanceChange(data.duptBalance);
+              }
+              break;
+            } catch (err) {
+              if (i === 4) console.error("[billing] payment confirmation failed:", err);
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+            }
+          }
         }
-      }
 
-      setRefreshingBalance(false);
+        if (!cancelled) await refreshBalance();
+      } finally {
+        if (!cancelled) setRefreshingBalance(false);
+      }
     }
 
     syncAfterPayment();
