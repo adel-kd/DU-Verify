@@ -754,8 +754,8 @@ export default function AdminDashboard() {
       <Toast toast={toast} onClose={() => setToast(null)} />
 
       <main className="flex-1 min-h-0 w-full px-4 sm:px-6 pb-4 sm:pb-6 overflow-hidden">
-        <div className="h-full grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)] gap-4 sm:gap-6 min-h-0">
-          <aside className="bg-white dark:bg-panel border border-black/10 dark:border-line rounded-3xl p-3 sm:p-4 shadow-sm overflow-y-auto">
+        <div className="h-full grid grid-cols-1 grid-rows-[auto_minmax(0,1fr)] lg:grid-cols-[280px_minmax(0,1fr)] lg:grid-rows-1 gap-4 sm:gap-6 min-h-0">
+          <aside className="hidden lg:block bg-white dark:bg-panel border border-black/10 dark:border-line rounded-3xl p-4 shadow-sm overflow-y-auto">
             <div className="pb-3 border-b border-black/5 dark:border-line mb-3">
               <h1 className="font-display text-2xl font-semibold text-ink dark:text-paper">Platform admin</h1>
               <p className="text-sm text-ink/50 dark:text-mist mt-1">
@@ -789,6 +789,26 @@ export default function AdminDashboard() {
               })}
             </nav>
           </aside>
+
+          <nav
+            aria-label="Platform admin sections"
+            className="lg:hidden h-10 min-w-0 flex items-start gap-2 overflow-x-auto overscroll-x-contain snap-x snap-mandatory pb-1 -mx-1 px-1"
+          >
+            {SECTIONS.map((section) => (
+              <button
+                key={section.key}
+                type="button"
+                onClick={() => setTab(section.key)}
+                className={`h-9 shrink-0 snap-start whitespace-nowrap rounded-lg border px-3 text-sm font-medium transition ${
+                  tab === section.key
+                    ? "bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper"
+                    : "bg-white text-ink/60 border-black/10 dark:bg-panel dark:text-mist dark:border-line"
+                }`}
+              >
+                {section.label}
+              </button>
+            ))}
+          </nav>
 
           <section className="min-h-0 overflow-y-auto pr-1 sm:pr-2">
         {tab === "Overview" && overview && (
