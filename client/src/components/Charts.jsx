@@ -5,7 +5,7 @@
 // while the brand accent stays reserved for actions and status feedback.
 
 /**
- * Vertical bar chart.
+ * Horizontal rows on phones, vertical comparison bars on larger screens.
  *
  * @param {Array<{label: string, value: number, opacity?: number}>} data
  */
@@ -14,39 +14,67 @@ export function BarChart({ data, height = 160, unit = "" }) {
 
   return (
     <div className="w-full">
-      <div
-        className="flex items-end gap-2 w-full border-b border-black/15 dark:border-line"
-        style={{ height }}
-      >
+      <div className="space-y-4 sm:hidden">
         {data.map((d) => (
-          <div
-            key={d.label}
-            className="flex-1 flex flex-col items-center justify-end h-full group relative"
-          >
-            <span className="text-[10px] font-semibold text-ink dark:text-white mb-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              {d.value}
-              {unit}
-            </span>
-            <div
-              className="w-full max-w-[48px] bg-current text-ink dark:text-white"
-              style={{
-                height: `${Math.max(2, (d.value / max) * (height - 24))}px`,
-                opacity: d.opacity ?? 1,
-              }}
-              title={`${d.label}: ${d.value}${unit}`}
-            />
+          <div key={d.label}>
+            <div className="mb-1.5 flex items-baseline justify-between gap-3">
+              <span className="text-xs font-medium text-ink/65 dark:text-mist">
+                {d.label}
+              </span>
+              <span className="shrink-0 text-sm font-semibold text-ink dark:text-white">
+                {d.value}
+                {unit}
+              </span>
+            </div>
+            <div className="h-2.5 overflow-hidden bg-black/[0.07] dark:bg-white/10">
+              <div
+                className="h-full bg-current text-ink dark:text-white"
+                style={{
+                  width: `${Math.max(2, (d.value / max) * 100)}%`,
+                  opacity: d.opacity ?? 1,
+                }}
+                title={`${d.label}: ${d.value}${unit}`}
+              />
+            </div>
           </div>
         ))}
       </div>
-      <div className="flex gap-2 mt-1.5">
-        {data.map((d) => (
-          <div
-            key={d.label}
-            className="flex-1 text-center text-[10px] text-mist truncate"
-          >
-            {d.label}
-          </div>
-        ))}
+
+      <div className="hidden sm:block">
+        <div
+          className="flex items-end gap-2 w-full border-b border-black/15 dark:border-line"
+          style={{ height }}
+        >
+          {data.map((d) => (
+            <div
+              key={d.label}
+              className="flex-1 flex flex-col items-center justify-end h-full group relative"
+            >
+              <span className="text-[10px] font-semibold text-ink dark:text-white mb-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                {d.value}
+                {unit}
+              </span>
+              <div
+                className="w-full max-w-[48px] bg-current text-ink dark:text-white"
+                style={{
+                  height: `${Math.max(2, (d.value / max) * (height - 24))}px`,
+                  opacity: d.opacity ?? 1,
+                }}
+                title={`${d.label}: ${d.value}${unit}`}
+              />
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2 mt-1.5">
+          {data.map((d) => (
+            <div
+              key={d.label}
+              className="flex-1 text-center text-[10px] text-mist truncate"
+            >
+              {d.label}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
