@@ -1,13 +1,13 @@
 // components/Charts.jsx
 //
 // Dependency-free SVG charts for the dashboards.
-// Monochrome design: black/white bars and lines with the single
-// #12A783 seal accent. Sharp corners only.
+// Monochrome dashboard charts. Meaning comes from contrast and labels,
+// while the brand accent stays reserved for actions and status feedback.
 
 /**
  * Vertical bar chart.
  *
- * @param {Array<{label: string, value: number, color?: string}>} data
+ * @param {Array<{label: string, value: number, opacity?: number}>} data
  */
 export function BarChart({ data, height = 160, unit = "" }) {
   const max = Math.max(1, ...data.map((d) => d.value));
@@ -28,10 +28,10 @@ export function BarChart({ data, height = 160, unit = "" }) {
               {unit}
             </span>
             <div
-              className="w-full max-w-[48px]"
+              className="w-full max-w-[48px] bg-current text-ink dark:text-white"
               style={{
                 height: `${Math.max(2, (d.value / max) * (height - 24))}px`,
-                backgroundColor: d.color || "#12A783",
+                opacity: d.opacity ?? 1,
               }}
               title={`${d.label}: ${d.value}${unit}`}
             />
@@ -96,16 +96,29 @@ export function LineChart({ data, height = 160, unit = "" }) {
             strokeWidth="1"
           />
         ))}
-        <path d={area} fill="#12A783" opacity="0.12" />
+        <path
+          d={area}
+          fill="currentColor"
+          opacity="0.08"
+          className="text-ink dark:text-white"
+        />
         <path
           d={path}
           fill="none"
-          stroke="#12A783"
+          stroke="currentColor"
+          className="text-ink dark:text-white"
           strokeWidth="2"
           vectorEffect="non-scaling-stroke"
         />
         {points.map(([x, y], i) => (
-          <circle key={i} cx={x} cy={y} r="2.5" fill="#12A783" />
+          <circle
+            key={i}
+            cx={x}
+            cy={y}
+            r="2.5"
+            fill="currentColor"
+            className="text-ink dark:text-white"
+          />
         ))}
       </svg>
       <div className="flex justify-between mt-1.5 text-[10px] text-mist">
@@ -135,9 +148,10 @@ export function SplitBar({ segments }) {
         {segments.map((s) => (
           <div
             key={s.label}
+            className="bg-current text-ink dark:text-white"
             style={{
               width: `${(s.value / total) * 100}%`,
-              backgroundColor: s.color,
+              opacity: s.opacity ?? 1,
             }}
             title={`${s.label}: ${s.value}`}
           />
@@ -150,10 +164,10 @@ export function SplitBar({ segments }) {
             className="inline-flex items-center gap-1.5 text-xs text-mist"
           >
             <span
-              className="inline-block w-2.5 h-2.5"
-              style={{ backgroundColor: s.color }}
+              className="inline-block w-2.5 h-2.5 bg-current text-ink dark:text-white"
+              style={{ opacity: s.opacity ?? 1 }}
             />
-            {s.label} — {s.value}
+            {s.label} - {s.value}
           </span>
         ))}
       </div>

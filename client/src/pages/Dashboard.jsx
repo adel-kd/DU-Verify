@@ -43,6 +43,9 @@ const STATUS_STYLE = {
   SITE_ERROR: "bg-ink text-white dark:bg-black dark:text-white",
 };
 
+const OVERVIEW_CARD_CLASS =
+  "bg-white dark:bg-[#0A0A0A] rounded-3xl border border-black/10 dark:border-white/10 p-5 relative overflow-hidden transition-[border-color,box-shadow] duration-300 hover:border-black/20 dark:hover:border-white/20 hover:shadow-[0_18px_45px_rgba(0,0,0,0.08)]";
+
 /*
  * Staff only use phone numbers.
  *
@@ -443,8 +446,8 @@ export default function Dashboard() {
               onClick={() => setTab(s.key)}
               className={`w-full text-left rounded-2xl border p-3 transition ${
                 tab === s.key
-                  ? "border-seal bg-seal/10"
-                  : "border-black/10 dark:border-line bg-white dark:bg-panel hover:border-seal/40"
+                  ? "border-ink bg-black/[0.04] dark:border-paper dark:bg-white/10"
+                  : "border-black/10 dark:border-line bg-white dark:bg-panel hover:border-black/30 dark:hover:border-white/30"
               }`}
             >
               <p className="font-medium text-sm text-ink dark:text-paper">
@@ -487,7 +490,7 @@ export default function Dashboard() {
             <>
               {/* Low balance alert */}
               {stats.lowBalance && (
-                <div className="bg-alarm/10 border border-alarm/30 text-alarm px-4 py-3 rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div className="bg-black/[0.04] dark:bg-white/[0.06] border border-black/15 dark:border-white/15 text-ink dark:text-paper px-4 py-3 rounded-2xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                   <p className="text-sm font-medium">
                     Low balance — {stats.duptBalance} DU PT left
                     (alert threshold: {stats.lowBalanceThreshold} DU PT).
@@ -496,7 +499,7 @@ export default function Dashboard() {
 
                   <button
                     onClick={openTopUpModal}
-                    className="text-xs font-semibold bg-alarm text-white px-3 py-1.5 rounded-lg whitespace-nowrap"
+                    className="text-xs font-semibold bg-seal text-ink dark:text-paper px-3 py-1.5 rounded-lg whitespace-nowrap"
                   >
                     Top up now
                   </button>
@@ -549,20 +552,16 @@ export default function Dashboard() {
                   <StatCard
                     label="Valid"
                     value={stats.validChecks}
-                    accent="text-seal"
                   />
 
                   <StatCard
                     label="Blocked / used / failed"
                     value={stats.totalChecks - stats.validChecks}
-                    accent="text-alarm"
                   />
                 </section>
 
                 {/* Verification outcomes */}
-                <div className="col-span-12 lg:col-span-6 bg-white dark:bg-[#0A0A0A] rounded-3xl border border-black/5 dark:border-white/5 p-5 relative overflow-hidden transition-all duration-300 hover:border-seal/30 dark:hover:border-seal/30 hover:shadow-[0_0_30px_rgba(18,167,131,0.15)] group">
-                  <div className="absolute -inset-4 bg-gradient-to-br from-seal/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-3xl blur-xl pointer-events-none" />
-
+                <div className={`col-span-12 lg:col-span-6 ${OVERVIEW_CARD_CLASS}`}>
                   <div className="relative z-10">
                     <h2 className="font-display text-sm font-semibold text-ink dark:text-white mb-4">
                       Verification outcomes
@@ -573,7 +572,6 @@ export default function Dashboard() {
                         {
                           label: "Valid",
                           value: stats.validChecks,
-                          color: "#12A783",
                         },
                         {
                           label: "Failed",
@@ -581,7 +579,7 @@ export default function Dashboard() {
                             0,
                             stats.totalChecks - stats.validChecks
                           ),
-                          color: "#D5573B",
+                          opacity: 0.28,
                         },
                       ]}
                     />
@@ -592,7 +590,6 @@ export default function Dashboard() {
                           {
                             label: "Valid",
                             value: stats.validChecks,
-                            color: "#12A783",
                           },
                           {
                             label: "Not valid",
@@ -600,7 +597,7 @@ export default function Dashboard() {
                               0,
                               stats.totalChecks - stats.validChecks
                             ),
-                            color: "#D5573B",
+                            opacity: 0.28,
                           },
                         ]}
                       />
@@ -609,9 +606,7 @@ export default function Dashboard() {
                 </div>
 
                 {/* Income */}
-                <div className="col-span-12 lg:col-span-6 bg-white dark:bg-[#0A0A0A] rounded-3xl border border-black/5 dark:border-white/5 p-5 relative overflow-hidden transition-all duration-300 hover:border-seal/30 dark:hover:border-seal/30 hover:shadow-[0_0_30px_rgba(18,167,131,0.15)] group">
-                  <div className="absolute -inset-4 bg-gradient-to-br from-seal/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-3xl blur-xl pointer-events-none" />
-
+                <div className={`col-span-12 lg:col-span-6 ${OVERVIEW_CARD_CLASS}`}>
                   <div className="relative z-10">
                     <h2 className="font-display text-sm font-semibold text-ink dark:text-white mb-4">
                       Income (ETB)
@@ -642,29 +637,24 @@ export default function Dashboard() {
                   <StatCard
                     label="Today's income"
                     value={`${income.daily} ETB`}
-                    accent="text-seal"
                   />
 
                   <StatCard
                     label="This week"
                     value={`${income.weekly} ETB`}
-                    accent="text-seal"
                   />
 
                   <StatCard
                     label="This month"
                     value={`${income.monthly} ETB`}
-                    accent="text-seal"
                   />
                 </section>
 
                 {/* Verification Logs Table */}
                 <section
                   id="logs"
-                  className="col-span-12 bg-white dark:bg-[#0A0A0A] rounded-3xl border border-black/5 dark:border-white/5 p-5 relative overflow-hidden transition-all duration-300 hover:border-seal/30 dark:hover:border-seal/30 hover:shadow-[0_0_30px_rgba(18,167,131,0.15)] group"
+                  className={`col-span-12 ${OVERVIEW_CARD_CLASS}`}
                 >
-                  <div className="absolute -inset-4 bg-gradient-to-br from-seal/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-3xl blur-xl pointer-events-none" />
-
                   <div className="relative z-10">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
                       <h2 className="font-display font-semibold text-ink dark:text-white">
@@ -805,10 +795,8 @@ export default function Dashboard() {
                 {/* Staff Accounts Table */}
                 <section
                   id="staff"
-                  className="col-span-12 bg-white dark:bg-[#0A0A0A] rounded-3xl border border-black/5 dark:border-white/5 p-5 relative overflow-hidden transition-all duration-300 hover:border-seal/30 dark:hover:border-seal/30 hover:shadow-[0_0_30px_rgba(18,167,131,0.15)] group"
+                  className={`col-span-12 ${OVERVIEW_CARD_CLASS}`}
                 >
-                  <div className="absolute -inset-4 bg-gradient-to-br from-seal/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-3xl blur-xl pointer-events-none" />
-
                   <div className="relative z-10">
                     {accountMode === "solo" ? (
                       <>
@@ -898,8 +886,8 @@ export default function Dashboard() {
                                     <span
                                       className={
                                         s.isActive
-                                          ? "text-seal"
-                                          : "text-alarm"
+                                          ? "text-ink dark:text-paper"
+                                          : "text-ink/45 dark:text-mist"
                                       }
                                     >
                                       {s.isActive
@@ -1083,23 +1071,15 @@ export default function Dashboard() {
   );
 }
 
-function StatCard({
-  label,
-  value,
-  accent = "text-ink dark:text-paper",
-}) {
+function StatCard({ label, value }) {
   return (
-    <div className="bg-white dark:bg-[#0A0A0A] rounded-3xl border border-black/5 dark:border-white/5 p-5 relative overflow-hidden transition-all duration-300 hover:border-seal/30 dark:hover:border-seal/30 hover:shadow-[0_0_30px_rgba(18,167,131,0.15)] group">
-      <div className="absolute -inset-4 bg-gradient-to-br from-seal/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-3xl blur-xl pointer-events-none" />
-
+    <div className={OVERVIEW_CARD_CLASS}>
       <div className="relative z-10">
         <p className="text-xs text-ink/40 dark:text-mist uppercase tracking-wide font-medium">
           {label}
         </p>
 
-        <p
-          className={`font-display text-2xl sm:text-3xl font-semibold mt-2 ${accent}`}
-        >
+        <p className="font-display text-2xl sm:text-3xl font-semibold mt-2 text-ink dark:text-paper">
           {value}
         </p>
       </div>

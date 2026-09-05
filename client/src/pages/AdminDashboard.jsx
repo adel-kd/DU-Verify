@@ -773,8 +773,8 @@ export default function AdminDashboard() {
                     onClick={() => setTab(section.key)}
                     className={`w-full text-left rounded-2xl border p-3 transition ${
                       active
-                        ? "border-seal bg-seal/10"
-                        : "border-black/10 dark:border-line bg-paper/70 dark:bg-[#1a1a1a] hover:border-seal/40"
+                        ? "border-ink bg-black/[0.04] dark:border-paper dark:bg-white/10"
+                        : "border-black/10 dark:border-line bg-paper/70 dark:bg-[#1a1a1a] hover:border-black/30 dark:hover:border-white/30"
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -782,7 +782,7 @@ export default function AdminDashboard() {
                         <p className="font-medium text-sm text-ink dark:text-paper">{section.label}</p>
                         <p className="text-xs text-ink/45 dark:text-mist mt-1">{section.description}</p>
                       </div>
-                      {active && <span className="text-[11px] uppercase tracking-wide text-sealDark">Active</span>}
+                      {active && <span className="text-[11px] uppercase tracking-wide text-ink/55 dark:text-paper/60">Active</span>}
                     </div>
                   </button>
                 );
@@ -796,38 +796,38 @@ export default function AdminDashboard() {
             <section className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               <StatCard label="Businesses" value={overview.businessCount} />
               <StatCard label="Total checks" value={overview.totalChecks} />
-              <StatCard label="Valid checks" value={overview.validChecks} accent="text-seal" />
-              <StatCard label="Failed / blocked checks" value={overview.failedChecks} accent="text-alarm" />
+              <StatCard label="Valid checks" value={overview.validChecks} />
+              <StatCard label="Failed / blocked checks" value={overview.failedChecks} />
               <StatCard label="Successful top-ups" value={overview.totalTopupCount} />
-              <StatCard label="Total topped up" value={`${overview.totalTopupAmount} ETB`} accent="text-seal" />
+              <StatCard label="Total topped up" value={`${overview.totalTopupAmount} ETB`} />
             </section>
 
             {/* Platform graphs */}
             <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="bg-white dark:bg-panel border border-black/10 dark:border-line p-4">
+              <div className="bg-white dark:bg-panel border border-black/10 dark:border-line rounded-3xl p-5 shadow-sm">
                 <h2 className="font-display text-sm font-semibold text-ink dark:text-white mb-3">Platform checks</h2>
                 <BarChart
                   data={[
-                    { label: "Valid", value: overview.validChecks, color: "#12A783" },
-                    { label: "Failed", value: overview.failedChecks, color: "#D5573B" },
+                    { label: "Valid", value: overview.validChecks },
+                    { label: "Failed", value: overview.failedChecks, opacity: 0.28 },
                   ]}
                 />
                 <div className="mt-4">
                   <SplitBar
                     segments={[
-                      { label: "Valid", value: overview.validChecks, color: "#12A783" },
-                      { label: "Failed / blocked", value: overview.failedChecks, color: "#D5573B" },
+                      { label: "Valid", value: overview.validChecks },
+                      { label: "Failed / blocked", value: overview.failedChecks, opacity: 0.28 },
                     ]}
                   />
                 </div>
               </div>
 
-              <div className="bg-white dark:bg-panel border border-black/10 dark:border-line p-4">
+              <div className="bg-white dark:bg-panel border border-black/10 dark:border-line rounded-3xl p-5 shadow-sm">
                 <h2 className="font-display text-sm font-semibold text-ink dark:text-white mb-3">Top-ups (ETB)</h2>
                 <BarChart
                   data={[
-                    { label: "Top-ups", value: overview.totalTopupCount, color: "#12A783" },
-                    { label: "Volume (÷100)", value: Math.round((overview.totalTopupAmount || 0) / 100), color: "#0A0A0A" },
+                    { label: "Top-ups", value: overview.totalTopupCount },
+                    { label: "Volume (÷100)", value: Math.round((overview.totalTopupAmount || 0) / 100), opacity: 0.28 },
                   ]}
                   unit=""
                 />
@@ -1877,11 +1877,11 @@ export default function AdminDashboard() {
   );
 }
 
-function StatCard({ label, value, accent = "text-ink dark:text-paper" }) {
+function StatCard({ label, value }) {
   return (
     <div className="bg-white dark:bg-panel rounded-2xl border border-black/5 dark:border-line shadow-sm p-4">
       <p className="text-xs text-ink/40 dark:text-mist uppercase tracking-wide">{label}</p>
-      <p className={`font-display text-2xl sm:text-3xl font-semibold mt-1 ${accent}`}>{value}</p>
+      <p className="font-display text-2xl sm:text-3xl font-semibold mt-1 text-ink dark:text-paper">{value}</p>
     </div>
   );
 }
