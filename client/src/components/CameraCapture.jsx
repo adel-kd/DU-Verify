@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { Camera, Check, X } from "lucide-react";
 
 export default function CameraCapture({ onCapture }) {
   const videoRef = useRef(null);
@@ -49,29 +50,35 @@ export default function CameraCapture({ onCapture }) {
     <div className="camera-wrapper">
       {!isCameraOn ? (
         <button
+          type="button"
           onClick={startCamera}
-          className="w-full py-3 bg-seal text-ink font-medium rounded-xl border border-black/10"
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-black/10 bg-white px-4 py-3 font-semibold text-ink transition hover:border-seal hover:text-sealDark dark:border-white/10 dark:bg-white/5 dark:text-white"
         >
-          📷 Open Camera
+          <Camera size={17} aria-hidden="true" />
+          Use camera
         </button>
       ) : null}
       {cameraError && !isCameraOn && (
         <p className="text-xs text-alarm mt-2 text-center">{cameraError}</p>
       )}
       {isCameraOn && (
-        <div className="relative">
-          <video ref={videoRef} className="w-full rounded-lg border border-black/10" muted />
+        <div className="relative overflow-hidden rounded-2xl border border-black/10 bg-black p-2 dark:border-white/10">
+          <video ref={videoRef} className="aspect-[4/3] w-full rounded-xl object-cover" muted playsInline />
           <div className="flex gap-2 mt-2">
             <button
+              type="button"
               onClick={capture}
-              className="flex-1 bg-ink text-paper py-2 rounded-lg"
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-seal py-2.5 font-semibold text-[#10201a]"
             >
+              <Check size={16} aria-hidden="true" />
               Take Photo
             </button>
             <button
+              type="button"
               onClick={stopCamera}
-              className="flex-1 bg-alarm/10 text-alarm py-2 rounded-lg"
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-white/10 py-2.5 font-semibold text-white"
             >
+              <X size={16} aria-hidden="true" />
               Cancel
             </button>
           </div>

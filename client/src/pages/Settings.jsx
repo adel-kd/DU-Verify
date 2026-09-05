@@ -6,6 +6,7 @@ import TopBar from "../components/TopBar.jsx";
 import Footer from "../components/Footer.jsx";
 import Toast from "../components/Toast.jsx";
 import BillingPanel from "../components/BillingPanel.jsx";
+import ProviderBadge from "../components/ProviderBadge.jsx";
 
 const TABS_OWNER = [
   { key: "account", label: "My Account" },
@@ -32,7 +33,7 @@ export default function Settings() {
   const [tab, setTab] = useState("account");
 
   return (
-    <div className="min-h-screen bg-paper dark:bg-ink flex flex-col">
+    <div className="min-h-screen bg-paper text-ink dark:bg-ink dark:text-paper flex flex-col">
       <TopBar duptBalance={user?.duptBalance} dark />
 
       <Toast
@@ -40,7 +41,7 @@ export default function Settings() {
         onClose={() => setToast(null)}
       />
 
-      <main className="flex-1 w-full max-w-3xl mx-auto p-4 sm:p-6 space-y-6">
+      <main className="flex-1 w-full max-w-3xl mx-auto p-4 sm:p-6 space-y-6 min-w-0">
         <div>
           <h1 className="font-display text-2xl font-semibold text-ink dark:text-paper">
             Settings
@@ -57,9 +58,9 @@ export default function Settings() {
             <button
               key={t.key}
               onClick={() => setTab(t.key)}
-              className={`whitespace-nowrap text-sm font-medium rounded-lg px-3 py-1.5 transition ${tab === t.key
-                ? "bg-ink text-paper"
-                : "bg-white text-ink/60 dark:text-mist border border-black/10 dark:border-line"
+              className={`whitespace-nowrap text-sm font-medium rounded-lg px-3 py-2 transition border ${tab === t.key
+                ? "bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper"
+                : "bg-white text-ink/60 dark:bg-[#1a1a1a] dark:text-mist border-black/10 dark:border-line"
                 }`}
             >
               {t.label}
@@ -861,16 +862,14 @@ export function PaymentAccountsTab({ setToast }) {
             No payment accounts configured yet.
           </p>
         ) : (
-          <div className="divide-y divide-black/5">
+          <div className="divide-y divide-black/5 dark:divide-line">
             {accounts.map((acc) => (
               <div
                 key={acc._id}
-                className="py-3 flex items-center justify-between gap-3"
+                className="py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
               >
-                <div>
-                  <p className="font-medium text-sm text-ink dark:text-paper">
-                    {acc.provider}
-                  </p>
+                <div className="min-w-0">
+                  <ProviderBadge provider={acc.provider} className="text-sm text-ink dark:text-paper" />
 
                   <p className="text-xs text-ink/50 dark:text-mist font-mono">
                     {acc.accountNumber}
@@ -890,7 +889,7 @@ export function PaymentAccountsTab({ setToast }) {
                   )}
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
                   <span
                     className={`text-xs font-semibold ${acc.enabled
                       ? "text-seal"
@@ -945,7 +944,7 @@ export function PaymentAccountsTab({ setToast }) {
               name="provider"
               value={form.provider}
               onChange={onChange}
-              className="w-full mt-1.5 border border-black/10 dark:border-line rounded-lg px-3 py-2 text-sm"
+              className="w-full mt-1.5 border border-black/10 dark:border-line rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#1a1a1a] text-ink dark:text-paper"
             >
               {PROVIDERS.map((p) => (
                 <option
@@ -1042,7 +1041,7 @@ export function Field({
           type={isPassword && reveal ? "text" : type}
           value={value}
           onChange={onChange}
-          className={`w-full mt-1.5 border px-3 py-2 text-sm bg-white dark:bg-panel text-ink dark:text-white ${error
+          className={`w-full mt-1.5 border px-3 py-2 text-sm bg-white dark:bg-[#1a1a1a] text-ink dark:text-paper ${error
             ? "border-alarm"
             : "border-black/15 dark:border-line"
             } ${isPassword ? "pr-10" : ""}`}
@@ -1053,7 +1052,7 @@ export function Field({
             type="button"
             onClick={() => setReveal((v) => !v)}
             aria-label={reveal ? "Hide password" : "Show password"}
-            className="absolute right-2 top-1/2 -translate-y-1/3 p-1 text-mist hover:text-white"
+            className="absolute right-2 top-1/2 -translate-y-1/3 p-1 text-mist hover:text-ink dark:hover:text-paper"
           >
             {reveal ? (
               <EyeOff size={16} strokeWidth={1.75} />

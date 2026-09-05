@@ -16,7 +16,7 @@ export default function CompleteProfile() {
 
   const [businessTypes, setBusinessTypes] = useState([]);
   const [businessType, setBusinessType] = useState("");
-  const [businessName, setBusinessName] = useState("");
+  const [businessName, setBusinessName] = useState(() => user?.businessName || "");
   const [phone, setPhone] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -79,6 +79,7 @@ export default function CompleteProfile() {
           />
 
           <input
+            required
             value={businessName}
             onChange={(e) => setBusinessName(e.target.value)}
             placeholder="Business name"

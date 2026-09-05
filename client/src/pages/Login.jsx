@@ -10,9 +10,53 @@ import PasswordInput from "../components/PasswordInput.jsx";
 const EMAIL_REGEX =
   /^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
 
-const API_BASE = `${
-  import.meta.env.VITE_API_URL || "https://gory-starry-undercoat.ngrok-free.dev"
-}/api`;
+async function findGoogleAuthBackend() {
+  const origin = encodeURIComponent(window.location.origin);
+  const candidates = api.baseURLs || [];
+
+  for (const baseURL of candidates) {
+    const controller = new AbortController();
+    const hostname = new URL(baseURL).hostname;
+    const isLocal = hostname === "localhost" || hostname === "127.0.0.1";
+    // Render free services can be asleep. Give the public API enough time to
+    // wake while keeping a failed localhost probe quick.
+    const timeout = window.setTimeout(() => controller.abort(), isLocal ? 2500 : 70_000);
+
+    try {
+      const response = await fetch(`${baseURL}/api/health`, {
+        method: "GET",
+        headers: { "ngrok-skip-browser-warning": "true" },
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`API health check returned ${response.status}`);
+      }
+
+      return `${baseURL}/api/auth/google?origin=${origin}`;
+    } catch {
+      // Try the next configured backend only after this one is unavailable.
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  }
+
+  throw new Error("No Google authentication backend is available");
+}
+
+async function startGoogleAuth(event, setStarting, onError) {
+  event.preventDefault();
+  onError("");
+  setStarting(true);
+
+  try {
+    const authUrl = await findGoogleAuthBackend();
+    window.location.assign(authUrl);
+  } catch {
+    onError("Google sign-in is temporarily unavailable. Check the API connection and try again.");
+    setStarting(false);
+  }
+}
 
 function landingFor(user) {
   if (!user) return "/login";
@@ -22,11 +66,15 @@ function landingFor(user) {
 }
 
 // Shared Google OAuth entry point with hover micro-animation.
-function GoogleButton({ label }) {
+function GoogleButton({ label, onError }) {
+  const [starting, setStarting] = useState(false);
+
   return (
-    <a
-      href={`${API_BASE}/auth/google?origin=${encodeURIComponent(window.location.origin)}`}
-      className="w-full flex items-center justify-center gap-2 border border-[#222] bg-[#121212] text-white font-medium py-2.5 rounded-lg hover:bg-black hover:border-seal/50 transition-all duration-200 transform hover:-translate-y-0.5 active:translate-y-0 shadow-sm"
+    <button
+      type="button"
+      onClick={(event) => startGoogleAuth(event, setStarting, onError)}
+      disabled={starting}
+      className="w-full flex items-center justify-center gap-2 border border-[#222] bg-[#121212] text-white font-medium py-2.5 rounded-lg hover:bg-black hover:border-seal/50 transition-all duration-200 transform hover:-translate-y-0.5 active:translate-y-0 shadow-sm disabled:cursor-wait disabled:opacity-60"
     >
       <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true">
         <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
@@ -34,8 +82,8 @@ function GoogleButton({ label }) {
         <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
         <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
       </svg>
-      {label}
-    </a>
+      {starting ? "Connecting to Google…" : label}
+    </button>
   );
 }
 
@@ -53,7 +101,11 @@ export default function Login() {
   const nav = useNavigate();
 
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("google") === "failed") {
+    const googleError = new URLSearchParams(window.location.search).get("google");
+
+    if (googleError === "invalid_state") {
+      setError("Your Google sign-in session expired. Please start again from this page.");
+    } else if (googleError === "failed") {
       setError("Google sign-in failed. Please try again or use email sign-in.");
     }
   }, []);
@@ -178,9 +230,9 @@ export default function Login() {
         <div className="flex flex-col justify-between p-6 lg:p-12 bg-[#000000]">
           {/* Top Help link */}
           <div className="flex justify-end w-full">
-            <a href="#help" className="text-xs text-mist hover:text-white flex items-center gap-1 transition-colors">
+            <Link to="/help" className="text-xs text-mist hover:text-white flex items-center gap-1 transition-colors">
               <span className="border border-mist/40 rounded-full w-4 h-4 inline-flex items-center justify-center text-[10px]">?</span> Help
-            </a>
+            </Link>
           </div>
 
           <div className="w-full max-w-sm mx-auto my-auto transition-all duration-300">
@@ -281,7 +333,7 @@ export default function Login() {
                   <span className="h-px flex-1 bg-[#222]" />
                 </div>
 
-                <GoogleButton label="Continue with Google" />
+                <GoogleButton label="Continue with Google" onError={setError} />
               </form>
             ) : (
               /* Register Form */
@@ -400,7 +452,7 @@ export default function Login() {
                   <span className="h-px flex-1 bg-[#222]" />
                 </div>
 
-                <GoogleButton label="Sign up with Google" />
+                <GoogleButton label="Sign up with Google" onError={setError} />
               </form>
             )}
 

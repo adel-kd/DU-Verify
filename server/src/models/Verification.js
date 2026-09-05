@@ -83,12 +83,13 @@ const verificationSchema = new mongoose.Schema({
       "OCR_FAILED",
       "AMOUNT_MISMATCH",
       "PROVIDER_ERROR",
+      "PROVIDER_UNAVAILABLE",
+      "SITE_ERROR",
       // Added for the two-step verification upgrade (billing/admin spec
       // section 11): the underlying transaction is real, but it wasn't
       // paid to this business's configured receiving account.
       "RECEIVER_MISMATCH",
-      // The business hasn't configured (or has disabled) a payment
-      // account for this provider at all - distinct from a real mismatch.
+      // The provider was reached but did not confirm the payment.
       "NOT_VERIFIED",
     ],
     required: true,

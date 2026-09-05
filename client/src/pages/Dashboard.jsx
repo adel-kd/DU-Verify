@@ -33,13 +33,14 @@ import {
 const STATUS_STYLE = {
   VALID: "bg-seal/10 text-sealDark",
   ALREADY_USED: "bg-alarm/10 text-alarm",
-  OCR_FAILED: "bg-black/5 text-ink/50 dark:text-mist",
-  AMOUNT_MISMATCH: "bg-flag/15 text-flag",
-  RECEIVER_MISMATCH: "bg-flag/15 text-flag",
-  NOT_VERIFIED: "bg-black/5 text-ink/50 dark:text-mist",
-  PROVIDER_UNAVAILABLE: "bg-black/10 text-ink/70 dark:text-mist",
-  PROVIDER_ERROR: "bg-black/10 text-ink/70 dark:text-mist",
-  INVALID_FORMAT: "bg-alarm/10 text-alarm",
+  AMOUNT_MISMATCH: "bg-flag/15 text-[#8A5A00] dark:text-[#F1C15D]",
+  RECEIVER_MISMATCH: "bg-flag/15 text-[#8A5A00] dark:text-[#F1C15D]",
+  NOT_VERIFIED: "bg-alarm/10 text-alarm",
+  OCR_FAILED: "bg-ink text-white dark:bg-black dark:text-white",
+  PROVIDER_UNAVAILABLE: "bg-ink text-white dark:bg-black dark:text-white",
+  PROVIDER_ERROR: "bg-ink text-white dark:bg-black dark:text-white",
+  INVALID_FORMAT: "bg-ink text-white dark:bg-black dark:text-white",
+  SITE_ERROR: "bg-ink text-white dark:bg-black dark:text-white",
 };
 
 /*
@@ -61,41 +62,49 @@ const SECTIONS = [
   {
     key: "Overview",
     label: "Overview",
+    mobileLabel: "Overview",
     description: "Checks, income, and staff at a glance.",
   },
   {
     key: "Account",
     label: "My Account",
+    mobileLabel: "Account",
     description: "Business, role, and balance summary.",
   },
   {
     key: "Personal Info",
     label: "Personal Information",
+    mobileLabel: "Profile",
     description: "Business name, your name, contact details.",
   },
   {
     key: "Security",
     label: "Privacy & Security",
+    mobileLabel: "Security",
     description: "Password and sessions.",
   },
   {
     key: "Theme",
     label: "Theme",
+    mobileLabel: "Theme",
     description: "Light, dark, or system.",
   },
   {
     key: "Notifications",
     label: "Notifications",
+    mobileLabel: "Notifications",
     description: "Balance alerts and receipt emails.",
   },
   {
     key: "Billing",
     label: "Billing",
+    mobileLabel: "Billing",
     description: "Top up and review the ledger.",
   },
   {
     key: "Payment Accounts",
     label: "Payment Accounts",
+    mobileLabel: "Pay accounts",
     description: "Bank/wallet accounts checks are matched against.",
   },
 ];
@@ -424,10 +433,10 @@ export default function Dashboard() {
         onClose={() => setToast(null)}
       />
 
-      <main className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] gap-4 p-4 overflow-hidden">
+      <main className="flex-1 min-h-0 min-w-0 grid grid-cols-1 grid-rows-[auto_minmax(0,1fr)] lg:grid-cols-[260px_minmax(0,1fr)] lg:grid-rows-1 gap-4 p-4 overflow-hidden">
 
         {/* SIDEBAR — shutter-card navigation */}
-        <aside className="overflow-y-auto pr-1 space-y-1.5 hidden lg:block">
+        <aside className="min-h-0 overflow-y-auto pr-1 space-y-1.5 hidden lg:block">
           {SECTIONS.map((s) => (
             <button
               key={s.key}
@@ -450,23 +459,23 @@ export default function Dashboard() {
         </aside>
 
         {/* Mobile tab bar */}
-        <div className="lg:hidden flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
+        <div className="lg:hidden h-10 min-w-0 flex items-start gap-2 overflow-x-auto overscroll-x-contain snap-x snap-mandatory pb-1 -mx-1 px-1">
           {SECTIONS.map((s) => (
             <button
               key={s.key}
               onClick={() => setTab(s.key)}
-              className={`whitespace-nowrap text-sm font-medium rounded-lg px-3 py-1.5 transition ${
+              className={`w-32 h-9 shrink-0 snap-start whitespace-nowrap text-sm font-medium rounded-lg px-3 flex items-center justify-center border transition ${
                 tab === s.key
-                  ? "bg-ink text-paper"
-                  : "bg-white text-ink/60 dark:text-mist border border-black/10 dark:border-line"
+                  ? "bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper"
+                  : "bg-white text-ink/60 border-black/10 dark:bg-panel dark:text-mist dark:border-line"
               }`}
             >
-              {s.label}
+              {s.mobileLabel || s.label}
             </button>
           ))}
         </div>
 
-        <div className="overflow-y-auto pr-1 space-y-4">
+        <div className="min-h-0 min-w-0 overflow-y-auto pr-1 space-y-4">
 
           {/* Email verification gate */}
           <UnverifiedNotice />
@@ -680,6 +689,8 @@ export default function Dashboard() {
                         <option value="PROVIDER_ERROR">
                           Provider error
                         </option>
+                        <option value="INVALID_FORMAT">Invalid format</option>
+                        <option value="SITE_ERROR">Site error</option>
                       </select>
                     </div>
 

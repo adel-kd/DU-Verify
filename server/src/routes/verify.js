@@ -5,6 +5,7 @@ const Verification = require("../models/Verification");
 const BillingLedger = require("../models/BillingLedger");
 const PaymentAccount = require("../models/PaymentAccount");
 const PlatformSettings = require("../models/PlatformSettings");
+const AdminAction = require("../models/AdminAction");
 const { requireAuth } = require("../middleware/auth");
 const { extractReceiptData } = require("../services/ocr");
 const { verifyReceipt } = require("../services/veritas");
@@ -25,6 +26,31 @@ const VERIFICATION_COST = 1;
 router.use(requireAuth);
 
 /* ============================================================
+   EMAIL VERIFICATION GATE
+============================================================
+
+   Unverified accounts may not run verifications until they
+   confirm their email address. Google accounts are verified
+   automatically at login.
+============================================================ */
+
+router.use((req, res, next) => {
+  if (
+    req.user.role === "admin" ||
+    req.user.isVerified !== false
+  ) {
+    return next();
+  }
+
+  return res.status(403).json({
+    error:
+      "Please verify your email address before running verifications. Check your inbox for the activation link.",
+
+    code: "EMAIL_NOT_VERIFIED",
+  });
+});
+
+/* ============================================================
    HELPERS
 ============================================================ */
 
@@ -42,6 +68,35 @@ function normalizeAccountNumber(value) {
 }
 
 /**
+ * Account-number normalization WITH explicit OCR letter
+ * substitution.
+ *
+ * SAFE OCR substitutions only:
+ *
+ *   O/o -> 0     S/s -> 5     I/i -> 1     L/l -> 1     B/b -> 8
+ *
+ * Example:
+ *
+ *   "1234O678" -> "12340678"
+ *   "1234-5678-9012" -> "123456789012"
+ *
+ * IMPORTANT:
+ *
+ *   This is NOT fuzzy matching. After normalization the
+ *   comparison is exact — a genuinely changed digit can
+ *   NEVER pass.
+ */
+function normalizeAccountNumberWithOcr(value) {
+  return String(value || "")
+    .replace(/[Oo]/g, "0")
+    .replace(/[Ss]/g, "5")
+    .replace(/[Ii]/g, "1")
+    .replace(/[Ll]/g, "1")
+    .replace(/[Bb]/g, "8")
+    .replace(/\D/g, "");
+}
+
+/**
  * Normalize a person's name.
  */
 function normalizeName(value) {
@@ -51,6 +106,184 @@ function normalizeName(value) {
     .replace(/[^\p{L}\p{N}\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/**
+ * Collapse common OCR character confusions so that minor
+ * scanning errors do not break comparison.
+ *
+ * Applied ONLY during fuzzy comparison — never to stored data.
+ *
+ *   0 <-> O     1 <-> I / L     5 <-> S     8 <-> B
+ */
+function ocrCollapse(value) {
+  return String(value || "")
+    .replace(/[0o]/g, "0")
+    .replace(/[1il|]/g, "1")
+    .replace(/[5s]/g, "5")
+    .replace(/[8b]/g, "8");
+}
+
+/**
+ * Levenshtein edit distance (small strings only).
+ */
+function editDistance(a, b) {
+  if (a === b) return 0;
+
+  const m = a.length;
+  const n = b.length;
+
+  if (!m || !n) return Math.max(m, n);
+
+  let prev = Array.from(
+    { length: n + 1 },
+    (_, i) => i
+  );
+
+  for (let i = 1; i <= m; i++) {
+    const curr = [i];
+
+    for (let j = 1; j <= n; j++) {
+      curr[j] = Math.min(
+        prev[j] + 1,
+        curr[j - 1] + 1,
+        prev[j - 1] +
+          (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+    }
+
+    prev = curr;
+  }
+
+  return prev[n];
+}
+
+/**
+ * Compare two single name tokens tolerantly.
+ *
+ * Tokens are considered equivalent when they are equal,
+ * equal after OCR-character collapse, or within a small
+ * edit distance proportional to their length.
+ */
+function tokensFuzzyMatch(a, b) {
+  if (!a || !b) return false;
+
+  if (a === b) return true;
+
+  const ca = ocrCollapse(a);
+  const cb = ocrCollapse(b);
+
+  if (ca === cb) return true;
+
+  // SECURITY: be conservative with very short tokens.
+  // Edit distance becomes unreliable there ("ALI" vs "ABE"),
+  // so short tokens must match exactly or via OCR collapse.
+  if (Math.min(ca.length, cb.length) < 4) {
+    return false;
+  }
+
+  const maxLen = Math.max(ca.length, cb.length);
+
+  // Allow ~1 edit per 4 characters, minimum 1.
+  const tolerance = Math.max(1, Math.floor(maxLen / 4));
+
+  return editDistance(ca, cb) <= tolerance;
+}
+
+/**
+ * OCR-tolerant holder-name matching.
+ *
+ * Acceptance rules:
+ *
+ *   - exact normalized equality
+ *   - first + last token agreement (exact or fuzzy)
+ *     with sufficient overall token overlap
+ *   - missing middle names are tolerated
+ *   - extra/missing spaces and case differences ignored
+ *   - completely different names NEVER match
+ *
+ * Returns { matched, similarity } for logging.
+ */
+function ocrTolerantNamesMatch(expectedName, receivedName) {
+  const expected = normalizeName(expectedName);
+  const received = normalizeName(receivedName);
+
+  if (!expected || !received) {
+    return { matched: false, similarity: 0 };
+  }
+
+  if (expected === received) {
+    return { matched: true, similarity: 1 };
+  }
+
+  const expectedParts = expected.split(" ");
+  const receivedParts = received.split(" ");
+
+  if (expectedParts.length < 2 || receivedParts.length < 2) {
+    return { matched: false, similarity: 0 };
+  }
+
+  const expFirst = expectedParts[0];
+  const expLast = expectedParts[expectedParts.length - 1];
+  const recFirst = receivedParts[0];
+  const recLast = receivedParts[receivedParts.length - 1];
+
+  // First AND last name must agree (fuzzily).
+  const firstOk = tokensFuzzyMatch(expFirst, recFirst);
+  const lastOk = tokensFuzzyMatch(expLast, recLast);
+
+  if (!firstOk || !lastOk) {
+    return { matched: false, similarity: 0 };
+  }
+
+  // Require sufficient overlap between the token sets so that
+  // unrelated holders cannot pass on first+last alone when the
+  // configured name has more parts.
+  const matchedTokens = expectedParts.filter((token) =>
+    receivedParts.some((other) => tokensFuzzyMatch(token, other))
+  ).length;
+
+  const similarity =
+    matchedTokens / Math.max(expectedParts.length, receivedParts.length);
+
+  // If both names have the same number of parts, first+last
+  // agreement is strong enough. If part counts differ (missing
+  // middle name), require at least half the tokens to agree.
+  const samePartCount =
+    expectedParts.length === receivedParts.length;
+
+  const threshold = samePartCount ? 0.5 : 0.5;
+
+  const matched = similarity >= threshold;
+
+  console.log(
+    "[HolderMatch]",
+    JSON.stringify({
+      holderComparison: "tolerant",
+
+      expectedTokenCount: expectedParts.length,
+
+      receivedTokenCount: receivedParts.length,
+
+      matchedTokens,
+
+      similarity: Number(similarity.toFixed(2)),
+
+      result: matched ? "MATCH" : "MISMATCH",
+    })
+  );
+
+  return { matched, similarity };
+}
+
+/**
+ * Legacy exact matcher kept for callers that need strictness.
+ */
+function namesMatch(expectedName, receivedName) {
+  return ocrTolerantNamesMatch(
+    expectedName,
+    receivedName
+  ).matched;
 }
 
 /**
@@ -123,17 +356,27 @@ function namesMatch(expectedName, receivedName) {
 /**
  * Account number matching.
  */
+/**
+ * Account number matching.
+ *
+ * Harmless formatting differences (spaces, dashes) are ignored
+ * and safe OCR letter substitutions are normalized — but after
+ * that the comparison is STRICTLY EXACT.
+ *
+ * No edit distance. No fuzzy matching. A single genuinely
+ * changed digit is always a mismatch.
+ */
 function accountNumbersMatch(
   expectedAccount,
   receivedAccount
 ) {
   const expected =
-    normalizeAccountNumber(
+    normalizeAccountNumberWithOcr(
       expectedAccount
     );
 
   const received =
-    normalizeAccountNumber(
+    normalizeAccountNumberWithOcr(
       receivedAccount
     );
 
@@ -466,18 +709,95 @@ function formatVerificationHour(
  *
  *   RECEIVER_MISMATCH
  */
+/**
+ * Match the receiver against admin-configured payment accounts.
+ *
+ * PROVIDER-SPECIFIC ACCOUNT SELECTION (STRICT):
+ *
+ * When the customer pays through a specific bank/provider, the
+ * comparison MUST use the admin-configured receiver accounts
+ * belonging to that SAME provider.
+ *
+ * Example:
+ *
+ *   Payment provider: Awash
+ *   Admin config:     Awash -> A, CBE -> B, Dashen -> C
+ *
+ *   The Awash payment is compared ONLY against the configured
+ *   Awash account(s). A valid CBE account/name does NOT make an
+ *   Awash transaction pass.
+ *
+ * If the business has no accounts tagged with this provider,
+ * we fall back to comparing all enabled accounts so existing
+ * configurations keep working.
+ *
+ * Matching priority (ANY ONE reliable match is sufficient):
+ *
+ *   1. Exact normalized account-number match
+ *   2. Strong OCR-tolerant holder-name match
+ *
+ * Account numbers are compared digit-preserving exact — OCR
+ * tolerance applies to NAMES only, never to digits.
+ */
 function matchAgainstPaymentAccounts(
   paymentAccounts,
   receivedAccount,
-  receivedHolder
+  receivedHolder,
+  bankName
 ) {
   let accountNumberMatch = false;
   let accountHolderNameMatch = false;
 
   let matchedAccount = null;
 
+  // Provider-specific selection first.
+  const normalizedBank =
+    String(bankName || "")
+      .toLowerCase()
+      .trim();
+
+  const providerAccounts = paymentAccounts.filter(
+    (account) =>
+      String(account.provider || "")
+        .toLowerCase()
+        .trim() === normalizedBank
+  );
+
+  /*
+   * SECURITY:
+   *
+   * When accounts ARE tagged by provider, an Awash payment may
+   * ONLY match Awash-tagged accounts — never a CBE/Dashen
+   * account, even if the holder name is similar.
+   *
+   * The all-accounts fallback exists ONLY for legacy setups
+   * where no account has a provider tag at all.
+   */
+  const anyTagged = paymentAccounts.some(
+    (account) =>
+      String(account.provider || "").trim() !== ""
+  );
+
+  const candidates = providerAccounts.length
+    ? providerAccounts
+    : anyTagged
+      ? []
+      : paymentAccounts;
+
+  console.log(
+    "[HolderMatch]",
+    JSON.stringify({
+      providerFilter: bankName,
+
+      providerSpecificAccounts:
+        providerAccounts.length,
+
+      candidateAccounts: candidates.length,
+    })
+  );
+
   for (
-    const paymentAccount of paymentAccounts
+    const paymentAccount of candidates
   ) {
     const accountMatches =
       accountNumbersMatch(
@@ -485,11 +805,14 @@ function matchAgainstPaymentAccounts(
         receivedAccount
       );
 
-    const holderMatches =
-      namesMatch(
+    const nameComparison =
+      ocrTolerantNamesMatch(
         paymentAccount.accountHolderName,
         receivedHolder
       );
+
+    const holderMatches =
+      nameComparison.matched;
 
     if (accountMatches) {
       accountNumberMatch = true;
@@ -500,8 +823,8 @@ function matchAgainstPaymentAccounts(
     }
 
     /*
-     * EITHER account number OR holder name
-     * is enough.
+     * EITHER a reliable account-number match OR a
+     * reliable holder-name match is enough.
      */
     if (
       accountMatches ||
@@ -510,8 +833,34 @@ function matchAgainstPaymentAccounts(
       matchedAccount =
         paymentAccount;
 
+      console.log(
+        "[HolderMatch]",
+        JSON.stringify({
+          accountMatch: accountMatches,
+
+          holderMatch: holderMatches
+            ? "tolerant"
+            : false,
+
+          finalResult: "MATCH",
+        })
+      );
+
       break;
     }
+  }
+
+  if (!matchedAccount) {
+    console.log(
+      "[HolderMatch]",
+      JSON.stringify({
+        accountMatch: false,
+
+        holderSimilarity: "insufficient",
+
+        finalResult: "MISMATCH",
+      })
+    );
   }
 
   return {
@@ -599,20 +948,79 @@ router.post(
 
       /* ========================================================
          STEP 0.2: LOAD BUSINESS
+      ========================================================
+
+         Admins have no business of their own - when an admin
+         runs this (from the Admin dashboard's Verify tool, for
+         a client who has no staff to do it themselves), the
+         target business must be given explicitly.
       ======================================================== */
 
-      const business =
-        req.user.role === "owner"
-          ? req.user
-          : await User.findById(
-            req.user.businessId
-          );
+      let business;
+
+      if (req.user.role === "owner") {
+        business = req.user;
+      } else if (req.user.role === "admin") {
+        const targetBusinessId = req.body.businessId;
+
+        if (!targetBusinessId) {
+          return res.status(400).json({
+            error:
+              "Select a business to run this verification on behalf of.",
+          });
+        }
+
+        business = await User.findOne({
+          _id: targetBusinessId,
+          role: "owner",
+        });
+      } else {
+        business = await User.findById(
+          req.user.businessId
+        );
+      }
 
       if (!business) {
         return res.status(404).json({
           error:
             "Business account not found",
         });
+      }
+
+      // "Team" accounts have staff verify receipts instead of the
+      // owner - the owner manages the business, staff do the checks.
+      // (Solo accounts have no staff at all, so this never applies to
+      // them.) An admin acting on a team business's behalf via the
+      // Admin dashboard's Verify tool is exempt - that's a deliberate
+      // support override, logged above/below as such.
+      if (
+        req.user.role === "owner" &&
+        business.accountMode === "team"
+      ) {
+        return res.status(403).json({
+          error:
+            "Your account is set up for a team - have one of your staff run this check, or add staff in your dashboard if you haven't yet.",
+          code: "ACCOUNT_MODE_TEAM",
+        });
+      }
+
+      // Audit trail: an admin running a check on a client's behalf is a
+      // deliberate override of the normal "only the business itself
+      // checks its own receipts" flow, and uses the existing
+      // "verification_override" AdminAction type set aside for this.
+      // Fire-and-forget - never block the actual verification on it.
+      if (req.user.role === "admin") {
+        AdminAction.create({
+          adminId: req.user._id,
+          businessId: business._id,
+          action: "verification_override",
+          reason: `Ran a ${bankName} receipt verification on behalf of this client.`,
+        }).catch((err) =>
+          console.error(
+            "[verify] could not log admin verification_override:",
+            err.message
+          )
+        );
       }
 
       /* ========================================================
@@ -715,13 +1123,16 @@ router.post(
       ) {
         return res.status(200).json({
           status:
-            "NOT_VERIFIED",
+            "SITE_ERROR",
 
           verified:
             false,
 
+          retryable:
+            true,
+
           userMessage:
-            "Unable to verify this payment. The business payment account is not fully configured. Please contact the administrator.",
+            "The business payment setup is incomplete. Please try again or contact the administrator.",
         });
       }
 
@@ -740,22 +1151,6 @@ router.post(
           })
         )
       );
-
-      if (
-        !paymentAccounts ||
-        paymentAccounts.length === 0
-      ) {
-        return res.status(200).json({
-          status:
-            "NOT_VERIFIED",
-
-          verified:
-            false,
-
-          userMessage:
-            "Unable to verify this payment. The business payment account is not fully configured. Please contact the administrator.",
-        });
-      }
 
       console.log(
         `[verify] loaded ${paymentAccounts.length} configured ${bankName} payment account(s)`
@@ -850,187 +1245,226 @@ router.post(
 
       if (!reference) {
         if (bankName === "CBE") {
-          const log =
-            await Verification.create({
-              businessId:
-                business._id,
+          if (!req.file) {
+            const log =
+              await Verification.create({
+                businessId: business._id,
+                checkedBy: req.user._id,
+                bankName,
+                transactionRef: "QR_NOT_FOUND",
+                amount: normalizedExpectedAmount ?? 0,
+                screenshotUrl: "not-stored",
+                status: "OCR_FAILED",
+                verificationCost: 0,
+              });
 
-              checkedBy:
-                req.user._id,
-
-              bankName,
-
-              transactionRef:
-                "QR_NOT_FOUND",
-
-              amount:
-                normalizedExpectedAmount ??
-                0,
-
-              screenshotUrl:
-                "not-stored",
-
-              status:
-                "OCR_FAILED",
-
-              verificationCost:
-                0,
+            return res.status(200).json({
+              status: "OCR_FAILED",
+              verified: false,
+              failureReason: "NO_REFERENCE",
+              userMessage:
+                "Could not find the CBE receipt QR code or a readable receipt reference. Please retake the receipt image or enter the CBE receipt link manually.",
+              providerName: bankName,
+              log,
             });
+          }
 
-          return res.status(200).json({
-            status:
-              "OCR_FAILED",
-
-            verified:
-              false,
-
-            failureReason:
-              "NO_REFERENCE",
-
-            userMessage:
-              "Could not find the CBE receipt QR code. Please retake the receipt image or enter the CBE receipt link manually.",
-
-            log,
-          });
-        }
-
-        if (!req.file) {
-          return res.status(400).json({
-            error:
-              "Receipt image or transaction reference is required",
-          });
-        }
-
-        try {
-          extracted =
-            await extractReceiptData(
+          try {
+            extracted = await extractReceiptData(
               req.file.buffer,
               req.file.mimetype
             );
-        } catch (ocrErr) {
-          console.error(
-            "[ocr] extraction failed:",
-            ocrErr.message,
-            ocrErr.cause || ""
-          );
+          } catch (ocrErr) {
+            console.error("[ocr] extraction failed:", ocrErr.message, ocrErr.cause || "");
 
-          const userMessage =
-            ocrErr.message.startsWith(
-              "Receipt scanning"
-            ) ||
-              ocrErr.message.startsWith(
-                "Could not analyze"
-              )
-              ? ocrErr.message
-              : "Could not read this receipt. Try a clearer photo of the full confirmation screen.";
+            const userMessage =
+              ocrErr.message.startsWith("Receipt scanning") ||
+              ocrErr.message.startsWith("Could not analyze")
+                ? ocrErr.message
+                : "Could not read this receipt. Try a clearer photo of the full confirmation screen.";
 
-          const log =
-            await Verification.create({
-              businessId:
-                business._id,
+            const log =
+              await Verification.create({
+                businessId: business._id,
+                checkedBy: req.user._id,
+                bankName,
+                transactionRef: "UNKNOWN",
+                amount: normalizedExpectedAmount ?? 0,
+                screenshotUrl: "not-stored",
+                status: "OCR_FAILED",
+                verificationCost: 0,
+              });
 
-              checkedBy:
-                req.user._id,
-
-              bankName,
-
-              transactionRef:
-                "UNKNOWN",
-
-              amount:
-                normalizedExpectedAmount ??
-                0,
-
-              screenshotUrl:
-                "not-stored",
-
-              status:
-                "OCR_FAILED",
-
-              verificationCost:
-                0,
+            return res.status(200).json({
+              status: "OCR_FAILED",
+              verified: false,
+              failureReason: "API_ERROR",
+              userMessage,
+              providerName: bankName,
+              log,
             });
+          }
 
-          return res.status(200).json({
-            status:
-              "OCR_FAILED",
+          // CBE USSD confirmation screens (dialed *847# etc.) can never be
+          // verified - CBE exposes no public lookup for them, unlike a
+          // real app/receipt screen (QR, mbreciept link, or FT reference).
+          // extracted.isUSSDResult is the actual signal for this; it is
+          // deliberately separate from "not a transaction image at all"
+          // below, since a USSD screen IS a real transaction image - it
+          // just isn't one CBE lets us verify.
+          if (extracted?.failureReason === "CBE_USSD_NOT_ACCEPTED") {
+            const log =
+              await Verification.create({
+                businessId: business._id,
+                checkedBy: req.user._id,
+                bankName,
+                transactionRef: "USSD_NOT_ACCEPTED",
+                amount: normalizedExpectedAmount ?? 0,
+                screenshotUrl: "not-stored",
+                status: "OCR_FAILED",
+                verificationCost: 0,
+              });
 
-            verified:
-              false,
-
-            failureReason:
-              "API_ERROR",
-
-            userMessage,
-
-            log,
-          });
-        }
-
-        if (
-          !extracted ||
-          !extracted.extractionOk ||
-          !extracted.transactionRef
-        ) {
-          const log =
-            await Verification.create({
-              businessId:
-                business._id,
-
-              checkedBy:
-                req.user._id,
-
-              bankName,
-
-              transactionRef:
-                "UNKNOWN",
-
-              amount:
-                normalizedExpectedAmount ??
-                0,
-
-              screenshotUrl:
-                "not-stored",
-
-              status:
-                "OCR_FAILED",
-
-              verificationCost:
-                0,
+            return res.status(200).json({
+              status: "OCR_FAILED",
+              verified: false,
+              failureReason: "CBE_USSD_NOT_ACCEPTED",
+              userMessage: "CBE USSD results are not accepted.",
+              providerName: bankName,
+              log,
             });
+          }
 
-          return res.status(200).json({
-            status:
-              "OCR_FAILED",
+          if (
+            extracted?.isTransactionImage === false ||
+            extracted?.failureReason === "NOT_TRANSACTION" ||
+            extracted?.issue === "not_transaction"
+          ) {
+            const log =
+              await Verification.create({
+                businessId: business._id,
+                checkedBy: req.user._id,
+                bankName,
+                transactionRef: "UNKNOWN",
+                amount: normalizedExpectedAmount ?? 0,
+                screenshotUrl: "not-stored",
+                status: "OCR_FAILED",
+                verificationCost: 0,
+              });
 
-            verified:
-              false,
+            return res.status(200).json({
+              status: "OCR_FAILED",
+              verified: false,
+              failureReason: "NOT_TRANSACTION",
+              userMessage: "This does not look like a payment receipt or USSD confirmation.",
+              providerName: bankName,
+              log,
+            });
+          }
 
-            failureReason:
-              extracted?.failureReason ||
-              "NO_REFERENCE",
+          if (extracted?.extractionOk && extracted?.transactionRef) {
+            reference = extracted.transactionRef.trim();
+            console.log("[verify] CBE OCR reference:", reference);
+          } else {
+            const log =
+              await Verification.create({
+                businessId: business._id,
+                checkedBy: req.user._id,
+                bankName,
+                transactionRef: "UNKNOWN",
+                amount: normalizedExpectedAmount ?? 0,
+                screenshotUrl: "not-stored",
+                status: "OCR_FAILED",
+                verificationCost: 0,
+              });
 
-            userMessage:
-              extracted?.userMessage ||
-              "Could not find a transaction reference in this image.",
+            return res.status(200).json({
+              status: "OCR_FAILED",
+              verified: false,
+              failureReason: extracted?.failureReason || "NO_REFERENCE",
+              userMessage:
+                extracted?.userMessage ||
+                "Could not find a CBE receipt QR code or readable receipt reference.",
+              imageQuality: extracted?.imageQuality,
+              confidence: extracted?.confidence,
+              providerName: bankName,
+              log,
+            });
+          }
+        } else {
+          if (!req.file) {
+            return res.status(400).json({
+              error: "Receipt image or transaction reference is required",
+            });
+          }
 
-            imageQuality:
-              extracted?.imageQuality,
+          try {
+            extracted = await extractReceiptData(
+              req.file.buffer,
+              req.file.mimetype
+            );
+          } catch (ocrErr) {
+            console.error("[ocr] extraction failed:", ocrErr.message, ocrErr.cause || "");
 
-            confidence:
-              extracted?.confidence,
+            const userMessage =
+              ocrErr.message.startsWith("Receipt scanning") ||
+              ocrErr.message.startsWith("Could not analyze")
+                ? ocrErr.message
+                : "Could not read this receipt. Try a clearer photo of the full confirmation screen.";
 
-            log,
-          });
+            const log =
+              await Verification.create({
+                businessId: business._id,
+                checkedBy: req.user._id,
+                bankName,
+                transactionRef: "UNKNOWN",
+                amount: normalizedExpectedAmount ?? 0,
+                screenshotUrl: "not-stored",
+                status: "OCR_FAILED",
+                verificationCost: 0,
+              });
+
+            return res.status(200).json({
+              status: "OCR_FAILED",
+              verified: false,
+              failureReason: "API_ERROR",
+              userMessage,
+              providerName: bankName,
+              log,
+            });
+          }
+
+          if (!extracted || !extracted.extractionOk || !extracted.transactionRef) {
+            const log =
+              await Verification.create({
+                businessId: business._id,
+                checkedBy: req.user._id,
+                bankName,
+                transactionRef: "UNKNOWN",
+                amount: normalizedExpectedAmount ?? 0,
+                screenshotUrl: "not-stored",
+                status: "OCR_FAILED",
+                verificationCost: 0,
+              });
+
+            return res.status(200).json({
+              status: "OCR_FAILED",
+              verified: false,
+              failureReason: extracted?.failureReason || "NO_REFERENCE",
+              userMessage:
+                extracted?.userMessage ||
+                "Could not find a transaction reference in this image.",
+              imageQuality: extracted?.imageQuality,
+              confidence: extracted?.confidence,
+              providerName: bankName,
+              log,
+            });
+          }
+
+          reference = extracted.transactionRef.trim();
+
+          console.log("[verify] OCR reference:", reference);
         }
-
-        reference =
-          extracted.transactionRef.trim();
-
-        console.log(
-          "[verify] OCR reference:",
-          reference
-        );
       }
 
       /* ========================================================
@@ -1217,13 +1651,51 @@ router.post(
           : null;
 
       /* ========================================================
-         STEP 7: PROVIDER RESULT
+         STEP 7: PROVIDER RESULT (CLASSIFICATION-BASED)
+      ========================================================
+
+         The provider adapter supplies a classification:
+
+           VALID | NOT_VERIFIED | PROVIDER_UNAVAILABLE
+               | INVALID_FORMAT (local input validation)
+
+         STRICT RULE:
+
+           A provider failing to respond is NEVER evidence
+           that the transaction is invalid.
+
+           PROVIDER_UNAVAILABLE => neutral result + DU PT refund.
       ======================================================== */
+
+      const classification =
+        veritasResult.classification || {
+          status: providerVerified
+            ? "VALID"
+            : "PROVIDER_UNAVAILABLE",
+
+          reason: "LEGACY_FALLBACK",
+
+          retryable: !providerVerified,
+        };
+
+      console.log(
+        `[verify] ${bankName} classification: ${classification.status} (${classification.reason || "n/a"})`
+      );
 
       let status =
         "INVALID_FORMAT";
 
-      if (providerVerified) {
+      if (
+        classification.status ===
+        "PROVIDER_UNAVAILABLE"
+      ) {
+        status = "PROVIDER_UNAVAILABLE";
+      } else if (
+        classification.status ===
+        "NOT_VERIFIED"
+      ) {
+        status = "NOT_VERIFIED";
+      } else if (providerVerified) {
         const providerAmount =
           providerDetails?.amount;
 
@@ -1243,8 +1715,60 @@ router.post(
             "VALID";
         }
       } else {
-        status =
-          "PROVIDER_ERROR";
+        // Unknown/unclassified failure fails safe.
+        status = "PROVIDER_UNAVAILABLE";
+      }
+
+      /* ========================================================
+         STEP 7.5: DU PT REFUND ON PROVIDER OUTAGE
+      ========================================================
+
+         A provider outage is NOT a successful verification.
+         The credit is refunded in full and a reversal entry
+         is written to the billing ledger.
+      ======================================================== */
+
+      if (
+        status ===
+        "PROVIDER_UNAVAILABLE"
+      ) {
+        const refundBalanceBefore =
+          business.duptBalance;
+
+        business.duptBalance +=
+          VERIFICATION_COST;
+
+        const refundBalanceAfter =
+          business.duptBalance;
+
+        await business.save();
+
+        await BillingLedger.create({
+          businessId:
+            business._id,
+
+          userId:
+            req.user._id,
+
+          type: "VERIFICATION_REFUND",
+
+          duptAmount:
+            VERIFICATION_COST,
+
+          balanceBefore:
+            refundBalanceBefore,
+
+          balanceAfter:
+            refundBalanceAfter,
+
+          status: "success",
+
+          reason: `Refund — ${bankName} provider unavailable`,
+        });
+
+        console.warn(
+          `[verify] ${bankName} outage — refunded ${VERIFICATION_COST} DU PT`
+        );
       }
 
       /* ========================================================
@@ -1347,7 +1871,9 @@ router.post(
 
             finalReceiverAccount,
 
-            finalReceiver
+            finalReceiver,
+
+            bankName
           );
 
         accountNumberMatch =
@@ -1363,28 +1889,53 @@ router.post(
           status =
             "RECEIVER_MISMATCH";
 
+          // Privacy-safe logging: mask account numbers and
+          // holder names — never log full sensitive values.
+          const maskAccount = (value) => {
+            const digits =
+              normalizeAccountNumber(value);
+
+            return digits
+              ? `***${digits.slice(-4)}`
+              : "(missing)";
+          };
+
+          const maskName = (value) => {
+            const parts = normalizeName(value).split(" ");
+
+            return parts.length && parts[0]
+              ? `${parts[0][0].toUpperCase()}***`
+              : "(missing)";
+          };
+
           console.warn(
             "[verify] receiver mismatch:",
-            {
-              bankName,
+            JSON.stringify({
+              provider: bankName,
 
-              receivedAccount:
-                finalReceiverAccount,
+              receivedAccount: maskAccount(
+                finalReceiverAccount
+              ),
 
-              receivedHolder:
-                finalReceiver,
+              receivedHolder: maskName(
+                finalReceiver
+              ),
 
               configuredAccounts:
                 paymentAccounts.map(
                   (account) => ({
-                    accountNumber:
-                      account.accountNumber,
+                    provider: account.provider,
 
-                    accountHolderName:
-                      account.accountHolderName,
+                    accountNumber: maskAccount(
+                      account.accountNumber
+                    ),
+
+                    accountHolderName: maskName(
+                      account.accountHolderName
+                    ),
                   })
                 ),
-            }
+            })
           );
         } else {
           console.log(
@@ -1440,8 +1991,30 @@ router.post(
           status,
 
           verificationCost:
-            VERIFICATION_COST,
+            status === "PROVIDER_UNAVAILABLE"
+              ? 0
+              : VERIFICATION_COST,
         });
+
+      const responseMeta = {
+        providerName: bankName,
+        // CBE always gets a client-facing status message, no matter which
+        // path produced the reference (QR, OCR fallback, or manual entry)
+        // - previously only the QR path did, so OCR/manual CBE checks
+        // silently showed nothing in the client message section.
+        providerMessage:
+          bankName === "CBE"
+            ? getCbeQrMessage(status, Boolean(qrReference))
+            : null,
+        // The CBE "new" receipt flow (QR or its OCR-extracted link) always
+        // resolves to a working mbreciept.cbe.com.et link once verified;
+        // legacy FT receipts have no such link, so this is correctly null
+        // for those.
+        providerLink:
+          bankName === "CBE"
+            ? veritasResult.body?.receipt_url || null
+            : null,
+      };
 
       /* ========================================================
          STEP 10: RECEIVER MISMATCH RESPONSE
@@ -1460,6 +2033,8 @@ router.post(
 
           duptBalance:
             business.duptBalance,
+
+          ...responseMeta,
 
           /*
            * Do not expose:
@@ -1485,7 +2060,70 @@ router.post(
       }
 
       /* ========================================================
-         STEP 11: PROVIDER ERROR
+         STEP 10.5: PROVIDER REACHED, PAYMENT UNCONFIRMED
+      ======================================================== */
+
+      if (
+        status ===
+        "NOT_VERIFIED"
+      ) {
+        return res.json({
+          status:
+            "NOT_VERIFIED",
+
+          verified:
+            false,
+
+          duptBalance:
+            business.duptBalance,
+
+          ...responseMeta,
+
+          userMessage:
+            "Payment unconfirmed. The payment provider was reached but did not confirm this transaction.",
+
+          log,
+        });
+      }
+
+      /* ========================================================
+         STEP 10.6: PROVIDER UNAVAILABLE (NEUTRAL RESULT)
+      ========================================================
+
+         We could not reliably communicate with the provider.
+
+         This does NOT mean the payment is fake or invalid.
+         The DU PT has already been refunded above.
+      ======================================================== */
+
+      if (
+        status ===
+        "PROVIDER_UNAVAILABLE"
+      ) {
+        return res.json({
+          status:
+            "PROVIDER_UNAVAILABLE",
+
+          verified:
+            false,
+
+          retryable:
+            true,
+
+          duptBalance:
+            business.duptBalance,
+
+          ...responseMeta,
+
+          userMessage:
+            "We couldn't reliably reach the payment provider. This does not mean the payment is invalid. Please try again.",
+
+          log,
+        });
+      }
+
+      /* ========================================================
+         STEP 11: PROVIDER ERROR (legacy)
       ======================================================== */
 
       if (
@@ -1499,11 +2137,16 @@ router.post(
           verified:
             false,
 
+          retryable:
+            true,
+
           duptBalance:
             business.duptBalance,
 
+          ...responseMeta,
+
           userMessage:
-            "The payment provider could not confirm this transaction.",
+            "We couldn't complete the provider check. Please try again.",
 
           log,
         });
@@ -1526,6 +2169,8 @@ router.post(
 
           duptBalance:
             business.duptBalance,
+
+          ...responseMeta,
 
           amount:
             finalAmount,
@@ -1555,6 +2200,8 @@ router.post(
           duptBalance:
             business.duptBalance,
 
+          ...responseMeta,
+
           amount:
             finalAmount,
 
@@ -1582,6 +2229,8 @@ router.post(
 
         duptBalance:
           business.duptBalance,
+
+        ...responseMeta,
 
         userMessage:
           "Transaction could not be verified.",
@@ -1624,7 +2273,9 @@ router.get(
         (
           req.user.role === "owner"
             ? req.user._id
-            : req.user.businessId
+            : req.user.role === "admin"
+              ? req.query.businessId
+              : req.user.businessId
         );
 
       if (!businessId) {
@@ -1750,23 +2401,40 @@ function getManualReferenceMessage(
     case "RECEIVER_MISMATCH":
       return "This transaction is real, but it does not match any business payment account configured by the administrator.";
 
+    case "PROVIDER_UNAVAILABLE":
+      return "We couldn't reliably reach the payment provider. This does not mean the payment is invalid. Please try again.";
+
+    case "NOT_VERIFIED":
+      return "Payment unconfirmed. The payment provider was reached but did not confirm this transaction.";
+
     case "PROVIDER_ERROR":
-      return "The provider couldn't confirm this transaction.";
+      return "We couldn't complete the provider check. Please try again.";
 
     case "INVALID_FORMAT":
-      return "This reference could not be verified for the selected bank.";
+      return "This reference could not be verified for the selected bank. Please try again.";
 
     default:
       return "Transaction verification completed.";
   }
 }
 
+// Client-facing CBE status message. CBE references can reach this point
+// three ways - a decoded QR code, an OCR-extracted receipt link/reference,
+// or a manually typed one - and every one of them should still produce a
+// useful message + provider name for the client message section (not just
+// the QR path). `viaQr` only changes the wording, never whether a message
+// is returned.
 function getCbeQrMessage(
-  status
+  status,
+  viaQr = false
 ) {
+  const subject = viaQr
+    ? "This CBE receipt QR code"
+    : "This CBE receipt";
+
   switch (status) {
     case "VALID":
-      return "This CBE receipt QR code matches a confirmed transaction.";
+      return `${subject} matches a confirmed transaction.`;
 
     case "AMOUNT_MISMATCH":
       return "The confirmed CBE payment amount is lower than the expected amount.";
@@ -1774,11 +2442,21 @@ function getCbeQrMessage(
     case "RECEIVER_MISMATCH":
       return "This CBE transaction is real, but it does not match any business payment account configured by the administrator.";
 
+    case "PROVIDER_UNAVAILABLE":
+      return "We couldn't reliably reach CBE. This does not mean the payment is invalid. Please try again.";
+
+    case "NOT_VERIFIED":
+      return "Payment unconfirmed. CBE was reached but did not confirm this transaction.";
+
     case "PROVIDER_ERROR":
-      return "CBE couldn't confirm this QR receipt.";
+      return viaQr
+        ? "We couldn't complete the CBE QR receipt check. Please try again."
+        : "We couldn't complete the CBE receipt check. Please try again.";
 
     case "INVALID_FORMAT":
-      return "This QR code could not be verified as a CBE payment receipt.";
+      return viaQr
+        ? "This QR code could not be read as a CBE payment receipt. Please try again."
+        : "This could not be read as a CBE payment receipt. Please try again.";
 
     default:
       return "CBE receipt verification completed.";

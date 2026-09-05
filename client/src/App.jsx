@@ -1,18 +1,29 @@
+import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
-import Login from "./pages/Login.jsx";
-import VerifyOtp from "./pages/VerifyOtp.jsx";
-import ForgotPassword from "./pages/ForgotPassword.jsx";
-import CompleteProfile from "./pages/CompleteProfile.jsx";
-import VerifyEmail from "./pages/VerifyEmail.jsx";
-import AuthSuccess from "./pages/AuthSuccess.jsx";
-import Verify from "./pages/Verify.jsx";
-import Dashboard from "./pages/Dashboard.jsx";
-import Settings from "./pages/Settings.jsx";
-import Terms from "./pages/Terms.jsx";
-import Privacy from "./pages/Privacy.jsx";
-import AdminDashboard from "./pages/AdminDashboard.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
+
+const Login = lazy(() => import("./pages/Login.jsx"));
+const VerifyOtp = lazy(() => import("./pages/VerifyOtp.jsx"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword.jsx"));
+const CompleteProfile = lazy(() => import("./pages/CompleteProfile.jsx"));
+const VerifyEmail = lazy(() => import("./pages/VerifyEmail.jsx"));
+const AuthSuccess = lazy(() => import("./pages/AuthSuccess.jsx"));
+const Verify = lazy(() => import("./pages/Verify.jsx"));
+const Dashboard = lazy(() => import("./pages/Dashboard.jsx"));
+const Settings = lazy(() => import("./pages/Settings.jsx"));
+const Terms = lazy(() => import("./pages/Terms.jsx"));
+const Privacy = lazy(() => import("./pages/Privacy.jsx"));
+const Help = lazy(() => import("./pages/Help.jsx"));
+const AdminDashboard = lazy(() => import("./pages/AdminDashboard.jsx"));
+
+function PageLoader() {
+  return (
+    <div className="min-h-screen bg-white dark:bg-ink grid place-items-center text-sm text-mist">
+      Loading...
+    </div>
+  );
+}
 
 function landingFor(user) {
   if (!user) return "/login";
@@ -25,7 +36,8 @@ export default function App() {
   const { user } = useAuth();
 
   return (
-    <Routes>
+    <Suspense fallback={<PageLoader />}>
+      <Routes>
       <Route path="/login" element={user ? <Navigate to={landingFor(user)} /> : <Login />} />
       <Route path="/verify-otp" element={<VerifyOtp />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -34,6 +46,7 @@ export default function App() {
       <Route path="/auth/success" element={<AuthSuccess />} />
       <Route path="/terms" element={<Terms />} />
       <Route path="/privacy" element={<Privacy />} />
+      <Route path="/help" element={<Help />} />
       <Route
         path="/verify"
         element={
@@ -76,7 +89,8 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      <Route path="*" element={<Navigate to={landingFor(user)} />} />
-    </Routes>
+        <Route path="*" element={<Navigate to={landingFor(user)} />} />
+      </Routes>
+    </Suspense>
   );
 }

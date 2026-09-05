@@ -14,14 +14,14 @@ export default {
         paper: "#FFFFFF",     // light surfaces — pure white, no cream
         seal: "#12A783",      // verification teal - the ONLY brand accent
         sealDark: "#0C7C63",
-        flag: "#D5573B",      // caution — same red family as alarm
+        flag: "#E2A63B",      // caution / confirmed mismatch states
         alarm: "#D5573B",     // failure / terminated states ONLY
         mist: "#9A9A9A",      // muted secondary text (readable on #222)
         line: "#3D3D3D",      // hairline dividers on dark
       },
       fontFamily: {
         display: ["\"Space Grotesk\"", "sans-serif"],
-        body: ["\"Inter\"", "sans-serif"],
+        body: ["\"Manrope\"", "sans-serif"],
       },
       borderRadius: {
         NONE: "0",

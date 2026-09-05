@@ -47,6 +47,30 @@ GENERAL RULES:
   FT Reference, Transfer Reference, Transaction Number, Txn ID,
   or similar Amharic/English USSD text.
 
+VERY IMPORTANT — CBE USSD SCREENS:
+CBE (Commercial Bank of Ethiopia) can be paid two different ways, and they
+are NOT interchangeable for verification:
+
+1. A CBE app/web RECEIPT (mobile banking app screen, a saved/shared receipt
+   image, or a PDF) — this can be verified because it carries either a QR
+   code, a full "mbreciept.cbe.com.et/..." link, or an "FT..." reference
+   number tied to CBE's own receipt lookup.
+2. A USSD confirmation screen (dialed *847# or similar, shown over the
+   phone's dialer/keypad, usually plain white/gray system text, short
+   Amharic or English lines like "Your request is completed
+   successfully...", sometimes with a short numeric code) — CBE does not
+   expose any public lookup for these, so they can never be verified, no
+   matter how clearly they can be read.
+
+Set isUSSDResult to true ONLY when bankNameGuess is "CBE" AND the image is
+that second kind — a USSD dialer-style confirmation screen, not a proper
+CBE app/receipt screen. Leave isUSSDResult false for every other case,
+including USSD-style confirmations from OTHER banks/telecoms (Telebirr,
+Awash, etc. legitimately rely on USSD/SMS-style confirmations and remain
+verifiable) and for genuine CBE receipts. Do not guess — only set it true
+when you can see the dialer/keypad-style USSD chrome or its characteristic
+plain system-text layout.
+
 VERY IMPORTANT — DASHEN BANK:
 Dashen receipts can contain TWO DIFFERENT reference numbers.
 
@@ -88,6 +112,7 @@ Respond with ONLY raw JSON, no markdown fences, no commentary:
 
 {
   "isTransactionImage": boolean,
+  "isUSSDResult": boolean,
   "imageQuality": "clear" | "slightly_blurry" | "very_blurry" | "unreadable",
   "issue": null | "not_transaction" | "too_blurry" | "no_reference_visible",
   "userMessage": string,
@@ -240,6 +265,13 @@ function repairDashenReferences(parsed) {
 }
 
 function buildFallbackMessage(parsed) {
+  if (
+    parsed.bankNameGuess === "CBE" &&
+    parsed.isUSSDResult === true
+  ) {
+    return "CBE USSD results are not accepted.";
+  }
+
   if (parsed.userMessage) {
     return parsed.userMessage;
   }
@@ -276,6 +308,26 @@ function classifyExtraction(parsed) {
   const repaired = repairDashenReferences(parsed);
 
   const ref = repaired.transactionRef;
+
+  // CBE USSD confirmation screens can never be verified (CBE exposes no
+  // public lookup for them) - reject with a specific, honest reason
+  // instead of falling through to the generic "not a transaction" or
+  // "no reference" messaging used for every other provider.
+  if (
+    parsed.bankNameGuess === "CBE" &&
+    parsed.isUSSDResult === true
+  ) {
+    return {
+      ok: false,
+      reason: "CBE_USSD_NOT_ACCEPTED",
+      message,
+      parsed: {
+        ...parsed,
+        transactionRef: ref,
+        transferRef: repaired.transferRef,
+      },
+    };
+  }
 
   if (
     parsed.isTransactionImage === false ||

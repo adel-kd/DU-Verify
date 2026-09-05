@@ -45,6 +45,8 @@
 // Manual transaction references are also supported.
 //
 
+const { classifyHttpStatus, unavailable } = require("./providerStatus");
+
 const { verifyAwash } = require("./providers/awash");
 const { verifyTelebirr } = require("./providers/telebirr");
 const { verifyCBE } = require("./providers/cbe");
@@ -119,7 +121,7 @@ function unsupported(bankName) {
 //   For CBE this is preferred over OCR.
 //
 
-async function verifyReceipt({
+async function dispatchReceipt({
   bankName,
   reference,
   suffix,
@@ -442,6 +444,115 @@ async function verifyReceipt({
   }
 }
 
+
+// ============================================================
+// CLASSIFICATION WRAPPER
+// ============================================================
+//
+// Every provider result carries a `classification` object:
+//
+//   { status, reason, provider, retryable }
+//
+// where status is one of:
+//
+//   VALID | NOT_VERIFIED | PROVIDER_UNAVAILABLE
+//
+// Providers that implement their own provider-specific
+// classifiers (e.g. Dashen) supply it themselves.
+//
+// For the remaining providers we derive a SAFE generic
+// classification from the HTTP status:
+//
+//   - network/infrastructure statuses => PROVIDER_UNAVAILABLE
+//   - definitive business rejection   => NOT_VERIFIED
+//   - unknown/unclassifiable          => PROVIDER_UNAVAILABLE
+//
+// We NEVER let an infrastructure failure become NOT_VERIFIED.
+// ============================================================
+
+function attachClassification(result, bankName) {
+  if (!result) {
+    return {
+      httpOk: false,
+
+      status: 502,
+
+      classification: unavailable(
+        bankName,
+        "NO_PROVIDER_RESULT"
+      ),
+
+      body: {
+        success: false,
+
+        error:
+          "The payment provider could not be reached.",
+      },
+    };
+  }
+
+  if (result.classification) {
+    return result;
+  }
+
+  // Successful provider confirmation.
+  if (result.httpOk && result.body?.success !== false) {
+    result.classification = {
+      status: "VALID",
+
+      provider: bankName,
+
+      retryable: false,
+    };
+
+    return result;
+  }
+
+  const httpStatus = Number(result.status) || 0;
+
+  result.classification =
+    httpStatus >= 400
+      ? classifyHttpStatus(httpStatus, bankName)
+      : unavailable(bankName, "UNCLASSIFIED_FAILURE");
+
+  console.log(
+    `[veritas] ${bankName} classification: ${result.classification.status} (${result.classification.reason})`
+  );
+
+  return result;
+}
+
+async function verifyReceipt(options) {
+  try {
+    const result = await dispatchReceipt(options);
+
+    return attachClassification(result, options.bankName);
+  } catch (err) {
+    // A thrown provider exception is infrastructure failure.
+    console.error(
+      `[veritas] ${options.bankName} threw:`,
+      err?.message
+    );
+
+    return {
+      httpOk: false,
+
+      status: 502,
+
+      classification: unavailable(
+        options.bankName,
+        "PROVIDER_EXCEPTION"
+      ),
+
+      body: {
+        success: false,
+
+        error:
+          "The payment provider could not be reached.",
+      },
+    };
+  }
+}
 
 // ============================================================
 // EXPORT

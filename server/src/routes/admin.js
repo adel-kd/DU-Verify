@@ -4,11 +4,15 @@ const Verification = require("../models/Verification");
 const Topup = require("../models/Topup");
 const AdminAction = require("../models/AdminAction");
 const Package = require("../models/Package");
+const Announcement = require("../models/Announcement");
 const BillingLedger = require("../models/BillingLedger");
 const PaymentAccount = require("../models/PaymentAccount");
 const PlatformSettings = require("../models/PlatformSettings");
+const PlatformPaymentAccount = require("../models/PlatformPaymentAccount");
 const { requireAuth } = require("../middleware/auth");
 const { requireAdmin } = require("../middleware/roleCheck");
+const { sendPurchaseReceiptEmail } = require("../services/email");
+const { creditBankTransferTopup } = require("../services/billingCredit");
 
 const router = express.Router();
 
@@ -59,7 +63,7 @@ router.get("/businesses", async (req, res) => {
     .lean();
 
   const businessIds = businesses.map((b) => b._id);
-  const [checkCounts, topupTotals] = await Promise.all([
+  const [checkCounts, topupTotals, staffCounts] = await Promise.all([
     Verification.aggregate([
       { $match: { businessId: { $in: businessIds } } },
       { $group: { _id: { businessId: "$businessId", status: "$status" }, count: { $sum: 1 } } },
@@ -67,6 +71,13 @@ router.get("/businesses", async (req, res) => {
     Topup.aggregate([
       { $match: { businessId: { $in: businessIds }, status: "success" } },
       { $group: { _id: "$businessId", total: { $sum: "$amount" } } },
+    ]),
+    // Used by the admin dashboard's Verify tool to surface "self-only"
+    // clients (no staff accounts) who have nobody else to run a check
+    // for them if they need help.
+    User.aggregate([
+      { $match: { businessId: { $in: businessIds }, role: "staff" } },
+      { $group: { _id: "$businessId", count: { $sum: 1 } } },
     ]),
   ]);
 
@@ -78,6 +89,7 @@ router.get("/businesses", async (req, res) => {
     if (row._id.status === "VALID") checksByBusiness[id].valid += row.count;
   }
   const topupByBusiness = Object.fromEntries(topupTotals.map((t) => [String(t._id), t.total]));
+  const staffCountByBusiness = Object.fromEntries(staffCounts.map((s) => [String(s._id), s.count]));
 
   res.json({
     businesses: businesses.map((b) => ({
@@ -86,6 +98,7 @@ router.get("/businesses", async (req, res) => {
       validChecks: checksByBusiness[b._id]?.valid || 0,
       totalToppedUp: topupByBusiness[b._id] || 0,
       lowBalance: b.duptBalance < b.lowBalanceThreshold,
+      staffCount: staffCountByBusiness[b._id] || 0,
     })),
   });
 });
@@ -154,6 +167,22 @@ router.post("/businesses/:id/adjust-balance", async (req, res) => {
     amount: numericAmount,
     reason,
   });
+
+  // Send email receipt to client admin if credit is positive & email receipts enabled
+  if (numericAmount > 0 && business.email && business.notificationPreferences?.emailReceipts !== false) {
+    sendPurchaseReceiptEmail(business.email, {
+      ownerName: business.ownerName,
+      businessName: business.businessName,
+      txRef: `ADMIN-${Date.now().toString(36).toUpperCase()}`,
+      purchaseType: `Admin Credit adjustment (${reason})`,
+      etbAmount: 0,
+      duptCredited: numericAmount,
+      newBalance: balanceAfter,
+      date: new Date(),
+    }).catch((emailErr) => {
+      console.error(`[admin] Failed to send credit receipt to ${business.email}:`, emailErr);
+    });
+  }
 
   res.json({ duptBalance: business.duptBalance });
 });
@@ -234,11 +263,100 @@ router.get("/topups", async (req, res) => {
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(Number(limit))
-      .populate("businessId", "businessName ownerName email"),
+      .populate("businessId", "businessName ownerName email")
+      .populate("paymentAccountId", "provider label accountNumber accountHolderName"),
     Topup.countDocuments(filter),
   ]);
 
   res.json({ items, total, page: Number(page), limit: Number(limit) });
+});
+
+// GET /api/admin/bank-transfers - direct payments needing review, plus
+// completed history when status=all is requested.
+router.get("/bank-transfers", async (req, res) => {
+  const status = String(req.query.status || "pending_review");
+  const filter = { paymentMethod: "bank_transfer" };
+  if (status !== "all") filter.status = status;
+
+  const items = await Topup.find(filter)
+    .sort({ submittedAt: -1, createdAt: -1 })
+    .limit(100)
+    .populate("businessId", "businessName ownerName email phone")
+    .populate("paymentAccountId", "provider label accountNumber accountHolderName")
+    .populate("reviewedBy", "ownerName email");
+
+  return res.json({ items });
+});
+
+// PATCH /api/admin/bank-transfers/:id/decision
+router.patch("/bank-transfers/:id/decision", async (req, res) => {
+  const decision = String(req.body.decision || "").toLowerCase();
+  const reason = String(req.body.reason || "").trim();
+  if (!['approve', 'reject'].includes(decision)) {
+    return res.status(400).json({ error: "decision must be approve or reject" });
+  }
+  if (!reason) {
+    return res.status(400).json({ error: "A review reason is required" });
+  }
+
+  const topup = await Topup.findOne({
+    _id: req.params.id,
+    paymentMethod: "bank_transfer",
+  });
+  if (!topup) return res.status(404).json({ error: "Bank transfer not found" });
+  if (topup.status !== "pending_review") {
+    return res.status(409).json({ error: `This transfer is already ${topup.status}` });
+  }
+
+  if (decision === "reject") {
+    const rejected = await Topup.findOneAndUpdate(
+      { _id: topup._id, status: "pending_review" },
+      {
+        $set: {
+          status: "rejected",
+          reviewReason: reason,
+          failureReason: reason,
+          reviewedBy: req.user._id,
+          reviewedAt: new Date(),
+        },
+      },
+      { new: true }
+    );
+    if (!rejected) {
+      return res.status(409).json({ error: "Another admin already reviewed this transfer" });
+    }
+
+    await AdminAction.create({
+      adminId: req.user._id,
+      businessId: topup.businessId,
+      action: "bank_transfer_reject",
+      reason: `${topup.txRef}: ${reason}`,
+    }).catch((error) =>
+      console.error("[admin] could not log bank transfer rejection:", error.message)
+    );
+    return res.json({ topup: rejected });
+  }
+
+  try {
+    const credited = await creditBankTransferTopup(topup._id, {
+      reviewedBy: req.user._id,
+      reason,
+    });
+    await AdminAction.create({
+      adminId: req.user._id,
+      businessId: topup.businessId,
+      action: "bank_transfer_approve",
+      amount: topup.duptAmount,
+      reason: `${topup.txRef}: ${reason}`,
+    }).catch((error) =>
+      console.error("[admin] could not log bank transfer approval:", error.message)
+    );
+    return res.json({ topup: credited.topup, duptBalance: credited.duptBalance });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      error: error.statusCode ? error.message : "Could not approve this bank transfer",
+    });
+  }
 });
 
 // ---------------------------------------------------------------------
@@ -380,7 +498,7 @@ router.get("/platform-settings", async (req, res) => {
 // PATCH /api/admin/platform-settings
 router.patch("/platform-settings", async (req, res) => {
   const settings = await PlatformSettings.getOrCreate();
-  const { customDuptRateEtb, providerEnabled, featureFlags } = req.body;
+  const { customDuptRateEtb, providerEnabled, featureFlags, paymentMethods, siteContent } = req.body;
   const changes = [];
 
   if (customDuptRateEtb !== undefined) {
@@ -414,6 +532,38 @@ router.patch("/platform-settings", async (req, res) => {
     }
   }
 
+  if (paymentMethods && typeof paymentMethods === "object") {
+    for (const key of ["chapaEnabled", "bankTransferEnabled"]) {
+      if (paymentMethods[key] === undefined) continue;
+      const value = Boolean(paymentMethods[key]);
+      if (settings.paymentMethods[key] !== value) {
+        changes.push(`paymentMethods.${key}: ${settings.paymentMethods[key]} -> ${value}`);
+        settings.paymentMethods[key] = value;
+      }
+    }
+  }
+
+  if (siteContent && typeof siteContent === "object") {
+    const allowed = [
+      "termsBody",
+      "privacyBody",
+      "contactEmail",
+      "contactPhone",
+      "contactAddress",
+    ];
+    let legalChanged = false;
+    for (const key of allowed) {
+      if (siteContent[key] === undefined) continue;
+      const value = String(siteContent[key] || "").trim();
+      if (settings.siteContent[key] !== value) {
+        settings.siteContent[key] = value;
+        changes.push(`siteContent.${key} updated`);
+        if (key === "termsBody" || key === "privacyBody") legalChanged = true;
+      }
+    }
+    if (legalChanged) settings.siteContent.legalUpdatedAt = new Date();
+  }
+
   settings.updatedAt = new Date();
   await settings.save();
 
@@ -426,6 +576,79 @@ router.patch("/platform-settings", async (req, res) => {
   }
 
   res.json({ settings });
+});
+
+// ---------------------------------------------------------------------
+// PLATFORM PAYMENT ACCOUNTS - receiving accounts shown to clients who
+// choose the direct bank-transfer purchase method.
+// ---------------------------------------------------------------------
+
+router.get("/platform-payment-accounts", async (_req, res) => {
+  const accounts = await PlatformPaymentAccount.find().sort({ sortOrder: 1, provider: 1 });
+  return res.json({ accounts, providers: PlatformPaymentAccount.PROVIDERS });
+});
+
+router.post("/platform-payment-accounts", async (req, res) => {
+  const { provider, accountNumber, accountHolderName, label, instructions, sortOrder } = req.body;
+  if (!provider || !accountNumber || !accountHolderName) {
+    return res.status(400).json({ error: "Provider, account number, and holder name are required" });
+  }
+  try {
+    const account = await PlatformPaymentAccount.create({
+      provider,
+      accountNumber,
+      accountHolderName,
+      label: label || "",
+      instructions: instructions || "",
+      sortOrder: Number(sortOrder) || 0,
+    });
+    await AdminAction.create({
+      adminId: req.user._id,
+      action: "platform_payment_account_create",
+      reason: `Added ${provider} receiving account ending ${String(accountNumber).slice(-4)}`,
+    });
+    return res.status(201).json({ account });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({ error: "That platform payment account already exists" });
+    }
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+router.patch("/platform-payment-accounts/:id", async (req, res) => {
+  const account = await PlatformPaymentAccount.findById(req.params.id);
+  if (!account) return res.status(404).json({ error: "Payment account not found" });
+
+  for (const key of [
+    "provider",
+    "accountNumber",
+    "accountHolderName",
+    "label",
+    "instructions",
+    "enabled",
+    "sortOrder",
+  ]) {
+    if (req.body[key] !== undefined) account[key] = req.body[key];
+  }
+  await account.save();
+  await AdminAction.create({
+    adminId: req.user._id,
+    action: "platform_payment_account_update",
+    reason: `Updated ${account.provider} receiving account ending ${account.accountNumber.slice(-4)}`,
+  });
+  return res.json({ account });
+});
+
+router.delete("/platform-payment-accounts/:id", async (req, res) => {
+  const account = await PlatformPaymentAccount.findByIdAndDelete(req.params.id);
+  if (!account) return res.status(404).json({ error: "Payment account not found" });
+  await AdminAction.create({
+    adminId: req.user._id,
+    action: "platform_payment_account_delete",
+    reason: `Deleted ${account.provider} receiving account ending ${account.accountNumber.slice(-4)}`,
+  });
+  return res.json({ deleted: true });
 });
 
 // ---------------------------------------------------------------------
@@ -477,5 +700,211 @@ router.post("/businesses/:id/refund", async (req, res) => {
 
   res.json({ duptBalance: business.duptBalance });
 });
+
+/* ============================================================
+   ADMINS — add another platform admin (Settings > Admins)
+============================================================ */
+
+// POST /api/admin/admins { ownerName, email?, phone, password }
+router.post("/admins", async (req, res) => {
+  try {
+    const { ownerName, email, phone, password } = req.body;
+
+    if (!ownerName || !phone || !password) {
+      return res.status(400).json({
+        error: "Name, phone and password are required",
+      });
+    }
+
+    if (String(password).length < 8) {
+      return res.status(400).json({
+        error: "Password must be at least 8 characters",
+      });
+    }
+
+    const normalizedEmail = String(email || "").toLowerCase().trim();
+    const normalizedPhone = String(phone || "").trim();
+
+    const search = {
+      $or: [
+        { phone: normalizedPhone },
+      ],
+    };
+
+    if (normalizedEmail) {
+      search.$or.push({ email: normalizedEmail });
+    }
+
+    const existing = await User.findOne({
+      ...search,
+    });
+
+    if (existing) {
+      if (existing.role === "admin") {
+        return res.status(409).json({
+          error: "That account is already an admin",
+        });
+      }
+
+      // Promote an existing client account to admin.
+      existing.role = "admin";
+      existing.isActive = true;
+      await existing.save();
+
+      console.log(`[admin] promoted ${existing.email} to admin`);
+
+      return res.json({ ok: true, promoted: true });
+    }
+
+      const bcrypt = require("bcryptjs");
+
+      const admin = await User.create({
+        businessName: "DU Verify (platform admin)",
+
+        ownerName,
+
+        // Leave the field unset (not null) when no email is given -
+        // required for the sparse unique index on email to actually let
+        // multiple phone-only admins be created. See models/User.js.
+        email: normalizedEmail || undefined,
+
+        phone: normalizedPhone,
+
+        password: await bcrypt.hash(password, 10),
+
+        role: "admin",
+
+      // Server-created admins are trusted — no OTP needed.
+      isVerified: true,
+    });
+
+    console.log(`[admin] created admin ${admin.email}`);
+
+    return res.status(201).json({
+      ok: true,
+      id: admin._id,
+    });
+  } catch (err) {
+    console.error("[admin/admins] create failed:", err.message);
+
+    return res.status(500).json({ error: "Could not create admin" });
+  }
+});
+
+// GET /api/admin/admins — list platform admins
+router.get("/admins", async (req, res) => {
+  try {
+    const admins = await User.find({ role: "admin" })
+      .select("ownerName email phone isActive createdAt")
+      .lean();
+
+    return res.json({ admins });
+  } catch (err) {
+    console.error("[admin/admins] list failed:", err.message);
+
+    return res.status(500).json({ error: "Failed to load admins" });
+  }
+});
+
+/* ============================================================
+   ANNOUNCEMENTS — manual alerts to client accounts
+   (business owners and their staff)
+============================================================ */
+
+// List announcements (newest first).
+router.get("/announcements", async (req, res) => {
+  try {
+    const items = await Announcement.find()
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .populate("businessId", "businessName ownerName")
+      .lean();
+
+    return res.json({ items });
+  } catch (err) {
+    console.error("[admin/announcements] list failed:", err.message);
+
+    return res.status(500).json({
+      error: "Failed to load announcements",
+    });
+  }
+});
+
+// Send an announcement to one business or broadcast to all.
+router.post("/announcements", async (req, res) => {
+  try {
+    const { title, message, severity, businessId } = req.body;
+
+    if (!title || !title.trim()) {
+      return res.status(400).json({ error: "Title is required" });
+    }
+
+    if (!message || !message.trim()) {
+      return res.status(400).json({ error: "Message is required" });
+    }
+
+    const announcement = await Announcement.create({
+      title: title.trim(),
+
+      message: message.trim(),
+
+      severity:
+        severity === "warning" || severity === "critical"
+          ? severity
+          : "info",
+
+      // null/empty => broadcast to ALL client accounts.
+      businessId: businessId || null,
+
+      createdBy: req.user._id,
+    });
+
+    console.log(
+      `[admin] announcement sent: "${announcement.title}" target=${businessId ? businessId : "ALL CLIENTS"}`
+    );
+
+    return res.status(201).json({
+      announcement,
+    });
+  } catch (err) {
+    console.error("[admin/announcements] create failed:", err.message);
+
+    return res.status(500).json({
+      error: "Failed to send announcement",
+    });
+  }
+});
+
+// Deactivate (hide) an announcement.
+router.patch(
+  "/announcements/:id/deactivate",
+  async (req, res) => {
+    try {
+      const announcement =
+        await Announcement.findByIdAndUpdate(
+          req.params.id,
+          { active: false },
+          { new: true }
+        );
+
+      if (!announcement) {
+        return res.status(404).json({
+          error: "Announcement not found",
+        });
+      }
+
+      return res.json({ announcement });
+    } catch (err) {
+      console.error(
+        "[admin/announcements] deactivate failed:",
+        err.message
+      );
+
+      return res.status(500).json({
+        error: "Failed to deactivate announcement",
+      });
+    }
+  }
+);
 
 module.exports = router;

@@ -1,7 +1,14 @@
 import { Link } from "react-router-dom";
 import logoSmall from "../assets/verified-logo.png";
+import usePlatformContent from "../hooks/usePlatformContent.js";
+import Footer from "../components/Footer.jsx";
 
 export default function Privacy() {
+  const content = usePlatformContent();
+  const updated = content.legalUpdatedAt
+    ? new Date(content.legalUpdatedAt).toLocaleDateString(undefined, { month: "long", year: "numeric" })
+    : "August 2026";
+
   return (
     <div className="min-h-screen bg-paper text-ink">
       <header className="sticky top-0 z-10 bg-ink text-paper px-5 py-3 flex items-center justify-between">
@@ -16,9 +23,15 @@ export default function Privacy() {
 
       <main className="max-w-2xl mx-auto p-6 sm:p-10">
         <h1 className="font-display text-3xl sm:text-4xl font-bold mb-1">Privacy Policy</h1>
-        <p className="text-sm text-ink/40 mb-8">Last updated: August 2026</p>
+        <p className="text-sm text-ink/40 mb-8">Last updated: {updated}</p>
 
-        <div className="space-y-6 text-sm sm:text-[15px] leading-relaxed text-ink/80">
+        {content.privacyBody && (
+          <div className="whitespace-pre-wrap text-sm sm:text-[15px] leading-relaxed text-ink/80">
+            {content.privacyBody}
+          </div>
+        )}
+
+        <div className={`${content.privacyBody ? "hidden" : ""} space-y-6 text-sm sm:text-[15px] leading-relaxed text-ink/80`}>
           <Section title="1. What we collect">
             <ul className="list-disc pl-5 space-y-1">
               <li>
@@ -35,6 +48,11 @@ export default function Privacy() {
                 receipts you submit.
               </li>
               <li>
+                <strong>Direct-payment evidence:</strong> screenshots or PDF receipts uploaded to
+                confirm a bank-transfer top-up or package purchase, including the administrator's
+                review decision.
+              </li>
+              <li>
                 <strong>Usage data:</strong> wallet balance, verification history, and basic
                 request logs used for billing and troubleshooting.
               </li>
@@ -43,9 +61,10 @@ export default function Privacy() {
 
           <Section title="2. How receipt images are handled">
             Receipt screenshots you upload are sent to our OCR provider to extract transaction
-            details and are processed in memory during that request. We do not retain the image
-            file itself after processing. Only the extracted text fields (reference number,
-            amount, names, timestamp) are saved to your verification history.
+            details. Images submitted for an ordinary customer-payment verification are processed
+            in memory and are not retained after that request. A receipt submitted as evidence of
+            your own direct bank-transfer purchase is retained so a platform administrator can
+            review unconfirmed payments and so duplicate wallet credits can be prevented.
           </Section>
 
           <Section title="3. How we use your information">
@@ -103,6 +122,7 @@ export default function Privacy() {
           </Section>
         </div>
       </main>
+      <Footer />
     </div>
   );
 }

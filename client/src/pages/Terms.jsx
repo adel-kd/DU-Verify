@@ -1,7 +1,14 @@
 import { Link } from "react-router-dom";
 import logoSmall from "../assets/verified-logo.png";
+import usePlatformContent from "../hooks/usePlatformContent.js";
+import Footer from "../components/Footer.jsx";
 
 export default function Terms() {
+  const content = usePlatformContent();
+  const updated = content.legalUpdatedAt
+    ? new Date(content.legalUpdatedAt).toLocaleDateString(undefined, { month: "long", year: "numeric" })
+    : "August 2026";
+
   return (
     <div className="min-h-screen bg-paper text-ink">
       <header className="sticky top-0 z-10 bg-ink text-paper px-5 py-3 flex items-center justify-between">
@@ -16,9 +23,15 @@ export default function Terms() {
 
       <main className="max-w-2xl mx-auto p-6 sm:p-10">
         <h1 className="font-display text-3xl sm:text-4xl font-bold mb-1">Terms of Service</h1>
-        <p className="text-sm text-ink/40 mb-8">Last updated: August 2026</p>
+        <p className="text-sm text-ink/40 mb-8">Last updated: {updated}</p>
 
-        <div className="space-y-6 text-sm sm:text-[15px] leading-relaxed text-ink/80">
+        {content.termsBody && (
+          <div className="whitespace-pre-wrap text-sm sm:text-[15px] leading-relaxed text-ink/80">
+            {content.termsBody}
+          </div>
+        )}
+
+        <div className={`${content.termsBody ? "hidden" : ""} space-y-6 text-sm sm:text-[15px] leading-relaxed text-ink/80`}>
           <Section title="1. Agreement to these terms">
             These Terms of Service ("Terms") govern access to and use of DU Verify (the
             "Service"), a payment receipt verification platform for merchants. By creating an
@@ -62,10 +75,11 @@ export default function Terms() {
 
           <Section title="6. Data submitted for verification">
             Receipt images you upload are processed to extract transaction details and are not
-            retained as image files after processing unless a future feature explicitly enables
-            storage for dispute resolution. Extracted transaction data (reference numbers,
-            amounts, timestamps, and counterpart names) is stored as part of your verification
-            history. See our Privacy Policy for more detail.
+            retained as image files after a normal receipt check. Receipts uploaded as proof of a
+            direct bank-transfer purchase are retained so an administrator can review the payment,
+            prevent duplicate credits, and maintain an accounting record. Extracted transaction
+            data is stored as part of your verification and billing history. See our Privacy Policy
+            for more detail.
           </Section>
 
           <Section title="7. Service availability">
@@ -95,6 +109,7 @@ export default function Terms() {
           </Section>
         </div>
       </main>
+      <Footer />
     </div>
   );
 }

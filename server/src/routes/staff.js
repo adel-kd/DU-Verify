@@ -3,6 +3,7 @@ const User = require("../models/User");
 const Verification = require("../models/Verification");
 const { requireAuth } = require("../middleware/auth");
 const { requireOwner } = require("../middleware/roleCheck");
+const bcrypt = require("bcryptjs");
 
 const router = express.Router();
 
@@ -11,25 +12,48 @@ router.use(requireAuth, requireOwner);
 // POST /api/staff - create a cashier/waiter account
 router.post("/", async (req, res) => {
   try {
-    const { ownerName, phone, email, password } = req.body;
-    if (!ownerName || !phone || !email || !password) {
-      return res.status(400).json({ error: "All fields are required" });
+    if (req.user.accountMode !== "team") {
+      return res.status(403).json({
+        error:
+          "Staff accounts are a Pro feature. Upgrade to Pro in Settings to add staff.",
+        code: "ACCOUNT_MODE_SOLO",
+      });
     }
 
-    const existing = await User.findOne({ $or: [{ email }, { phone }] });
+    const { ownerName, phone, password } = req.body;
+    const ownerNameStr = String(ownerName || "").trim();
+    const cleanPhone = String(phone || "").trim();
+    const rawPassword = String(password || "");
+
+    if (!ownerNameStr || !cleanPhone || !rawPassword) {
+      return res.status(400).json({ error: "Name, phone and password are required" });
+    }
+
+    const strippedPhone = cleanPhone.replace(/[\s\-\(\)]/g, "");
+    const existing = await User.findOne({
+      $or: [{ phone: cleanPhone }, { phone: strippedPhone }]
+    });
     if (existing) {
-      return res.status(409).json({ error: "An account with that email or phone already exists" });
+      return res.status(409).json({ error: "An account with that phone number already exists" });
     }
 
-    const bcrypt = require("bcryptjs");
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await bcrypt.hash(rawPassword, 10);
     const staff = await User.create({
       businessName: req.user.businessName,
-      ownerName,
-      phone,
-      email,
+      ownerName: ownerNameStr,
+      // Store a normalized value so the preflight duplicate check and the
+      // database unique index evaluate the same phone number.
+      phone: strippedPhone,
+      // Staff have no email — they sign in with phone + password. Leave
+      // the field unset (not null): the sparse unique index on email only
+      // excludes documents missing the field entirely, so explicitly
+      // storing null would collide on the second staff account created
+      // without an email. See models/User.js.
       password: passwordHash,
       role: "staff",
+      // Staff never verify email — they have none. Open their account
+      // immediately so they aren't shown the verification banner/OTP flow.
+      isVerified: true,
       businessId: req.user._id,
       // Staff don't hold their own DU PT balance (they draw against the
       // business's), so there's nothing for the migration script to convert.
@@ -44,6 +68,19 @@ router.post("/", async (req, res) => {
       isActive: staff.isActive,
     });
   } catch (err) {
+    if (err?.code === 11000) {
+      const field = Object.keys(err.keyPattern || err.keyValue || {})[0];
+      if (field === "phone") {
+        return res.status(409).json({ error: "An account with that phone number already exists" });
+      }
+      if (field === "email") {
+        return res.status(409).json({
+          error: "The database email index is misconfigured. Run the staff index repair script once.",
+          code: "EMAIL_INDEX_REPAIR_REQUIRED",
+        });
+      }
+    }
+    console.error("[staff] Could not create staff account:", err);
     res.status(500).json({ error: "Could not create staff account", detail: err.message });
   }
 });

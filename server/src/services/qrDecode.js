@@ -6,7 +6,7 @@
 // reliable than depending on OCR to transcribe a long token string
 // correctly, and it needs no account suffix at all.
 
-const Jimp = require("jimp");
+const { Jimp } = require("jimp");
 const jsQR = require("jsqr");
 
 async function decodeQrFromImage(buffer) {

@@ -6,12 +6,15 @@ import TopBar from "../components/TopBar.jsx";
 import Footer from "../components/Footer.jsx";
 import Modal from "../components/Modal.jsx";
 import Toast from "../components/Toast.jsx";
+import ProviderBadge from "../components/ProviderBadge.jsx";
+import { refreshPlatformContent } from "../hooks/usePlatformContent.js";
 
 const SECTIONS = [
   { key: "Overview", label: "Overview", description: "Platform health and totals." },
   { key: "Businesses", label: "Businesses", description: "Accounts, balances, and status." },
   { key: "Verify", label: "Verify a receipt", description: "Run a check for a client — handy for self-only clients with no staff." },
-  { key: "Top-ups", label: "Top-ups", description: "Chapa funding activity." },
+  { key: "Top-ups", label: "Top-ups", description: "All funding activity." },
+  { key: "Payment Reviews", label: "Payment reviews", description: "Approve or reject unconfirmed bank receipts." },
   { key: "Packages", label: "Packages", description: "Package pricing and status." },
   { key: "Ledger", label: "Ledger", description: "Billing audit trail." },
   { key: "Announcements", label: "Announcements", description: "Client messages and broadcasts." },
@@ -19,6 +22,47 @@ const SECTIONS = [
   { key: "Settings", label: "Settings", description: "Your account and preferences." },
   { key: "Platform Settings", label: "Platform Settings", description: "System-wide billing and provider controls." },
 ];
+
+const VERIFY_STATUS_STYLE = {
+  VALID: "border-seal/30 bg-seal/[0.06] text-sealDark",
+  AMOUNT_MISMATCH: "border-flag/40 bg-flag/10 text-[#8A5A00] dark:text-[#F1C15D]",
+  RECEIVER_MISMATCH: "border-flag/40 bg-flag/10 text-[#8A5A00] dark:text-[#F1C15D]",
+  NOT_VERIFIED: "border-alarm/35 bg-alarm/[0.07] text-alarm",
+  ALREADY_USED: "border-alarm/35 bg-alarm/[0.07] text-alarm",
+  OCR_FAILED: "border-ink bg-ink text-white dark:border-black dark:bg-black",
+  PROVIDER_ERROR: "border-ink bg-ink text-white dark:border-black dark:bg-black",
+  PROVIDER_UNAVAILABLE: "border-ink bg-ink text-white dark:border-black dark:bg-black",
+  INVALID_FORMAT: "border-ink bg-ink text-white dark:border-black dark:bg-black",
+  SITE_ERROR: "border-ink bg-ink text-white dark:border-black dark:bg-black",
+};
+
+const RETRYABLE_VERIFY_STATUSES = new Set([
+  "OCR_FAILED",
+  "PROVIDER_ERROR",
+  "PROVIDER_UNAVAILABLE",
+  "INVALID_FORMAT",
+  "SITE_ERROR",
+]);
+
+function addTryAgain(message) {
+  const value = String(message || "We couldn't complete this check.").trim();
+
+  if (/please try again[.!]?$/i.test(value)) return value;
+
+  const sentence = /[.!?]$/.test(value) ? value : `${value}.`;
+  return `${sentence} Please try again.`;
+}
+
+function adminVerificationMessage(result) {
+  if (result.status === "NOT_VERIFIED") {
+    return "Payment unconfirmed. The payment provider was reached but did not confirm this transaction.";
+  }
+
+  const message = result.userMessage || "Verification completed.";
+  return RETRYABLE_VERIFY_STATUSES.has(result.status)
+    ? addTryAgain(message)
+    : message;
+}
 
 export default function AdminDashboard() {
   const { user, updateUser, logout } = useAuth();
@@ -41,6 +85,10 @@ export default function AdminDashboard() {
   const [search, setSearch] = useState("");
   const [topups, setTopups] = useState([]);
   const [topupStatusFilter, setTopupStatusFilter] = useState("");
+  const [bankTransfers, setBankTransfers] = useState([]);
+  const [bankTransferFilter, setBankTransferFilter] = useState("pending_review");
+  const [reviewReasons, setReviewReasons] = useState({});
+  const [reviewSavingId, setReviewSavingId] = useState("");
 
   const [packages, setPackages] = useState([]);
   const [pkgForm, setPkgForm] = useState({ key: "", name: "", duptAmount: "", priceETB: "" });
@@ -58,6 +106,24 @@ export default function AdminDashboard() {
   const [platformSettings, setPlatformSettings] = useState(null);
   const [rateInput, setRateInput] = useState("");
   const [platformSaving, setPlatformSaving] = useState(false);
+  const [platformAccounts, setPlatformAccounts] = useState([]);
+  const [platformAccountProviders, setPlatformAccountProviders] = useState([]);
+  const [platformAccountSaving, setPlatformAccountSaving] = useState(false);
+  const [editingPlatformAccountId, setEditingPlatformAccountId] = useState("");
+  const [platformAccountForm, setPlatformAccountForm] = useState({
+    provider: "CBE",
+    label: "",
+    accountNumber: "",
+    accountHolderName: "",
+    instructions: "",
+  });
+  const [contentForm, setContentForm] = useState({
+    termsBody: "",
+    privacyBody: "",
+    contactEmail: "",
+    contactPhone: "",
+    contactAddress: "",
+  });
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [detail, setDetail] = useState(null);
@@ -95,6 +161,19 @@ export default function AdminDashboard() {
   async function loadTopups() {
     const { data } = await api.get("/admin/topups", { params: topupStatusFilter ? { status: topupStatusFilter } : {} });
     setTopups(data.items || []);
+  }
+
+  async function loadBankTransfers() {
+    const { data } = await api.get("/admin/bank-transfers", {
+      params: { status: bankTransferFilter },
+    });
+    setBankTransfers(data.items || []);
+  }
+
+  async function loadPlatformAccounts() {
+    const { data } = await api.get("/admin/platform-payment-accounts");
+    setPlatformAccounts(data.accounts || []);
+    setPlatformAccountProviders(data.providers || []);
   }
 
   async function loadPackages() {
@@ -269,6 +348,13 @@ export default function AdminDashboard() {
     const { data } = await api.get("/admin/platform-settings");
     setPlatformSettings(data.settings);
     setRateInput(String(data.settings.customDuptRateEtb));
+    setContentForm({
+      termsBody: data.settings.siteContent?.termsBody || "",
+      privacyBody: data.settings.siteContent?.privacyBody || "",
+      contactEmail: data.settings.siteContent?.contactEmail || "",
+      contactPhone: data.settings.siteContent?.contactPhone || "",
+      contactAddress: data.settings.siteContent?.contactAddress || "",
+    });
   }
 
   useEffect(() => {
@@ -277,6 +363,7 @@ export default function AdminDashboard() {
     loadTopups();
     loadPackages();
     loadPlatformSettings();
+    loadPlatformAccounts();
     loadAdmins();
   }, []);
 
@@ -288,6 +375,10 @@ export default function AdminDashboard() {
   useEffect(() => {
     loadTopups();
   }, [topupStatusFilter]);
+
+  useEffect(() => {
+    if (tab === "Payment Reviews") loadBankTransfers();
+  }, [tab, bankTransferFilter]);
 
   useEffect(() => {
     if (tab === "Ledger") loadLedger();
@@ -375,6 +466,144 @@ export default function AdminDashboard() {
       setPlatformSettings(data.settings);
     } catch (err) {
       setToast({ type: "error", text: err.response?.data?.error || "Could not update feature flag" });
+    }
+  }
+
+  async function togglePaymentMethod(method) {
+    if (!platformSettings) return;
+    const next = !platformSettings.paymentMethods?.[method];
+    try {
+      const { data } = await api.patch("/admin/platform-settings", {
+        paymentMethods: { [method]: next },
+      });
+      setPlatformSettings(data.settings);
+      setToast({ type: "success", text: "Payment method updated." });
+    } catch (err) {
+      setToast({ type: "error", text: err.response?.data?.error || "Could not update payment method" });
+    }
+  }
+
+  async function submitPlatformAccount(event) {
+    event.preventDefault();
+    setPlatformAccountSaving(true);
+    try {
+      if (editingPlatformAccountId) {
+        await api.patch(
+          `/admin/platform-payment-accounts/${editingPlatformAccountId}`,
+          platformAccountForm
+        );
+      } else {
+        await api.post("/admin/platform-payment-accounts", platformAccountForm);
+      }
+      setPlatformAccountForm({
+        provider: platformAccountProviders[0] || "CBE",
+        label: "",
+        accountNumber: "",
+        accountHolderName: "",
+        instructions: "",
+      });
+      setEditingPlatformAccountId("");
+      await loadPlatformAccounts();
+      setToast({
+        type: "success",
+        text: editingPlatformAccountId
+          ? "Platform receiving account updated."
+          : "Platform receiving account added.",
+      });
+    } catch (err) {
+      setToast({ type: "error", text: err.response?.data?.error || "Could not add payment account" });
+    } finally {
+      setPlatformAccountSaving(false);
+    }
+  }
+
+  function editPlatformAccount(account) {
+    setEditingPlatformAccountId(account._id);
+    setPlatformAccountForm({
+      provider: account.provider,
+      label: account.label || "",
+      accountNumber: account.accountNumber,
+      accountHolderName: account.accountHolderName,
+      instructions: account.instructions || "",
+    });
+  }
+
+  function cancelPlatformAccountEdit() {
+    setEditingPlatformAccountId("");
+    setPlatformAccountForm({
+      provider: platformAccountProviders[0] || "CBE",
+      label: "",
+      accountNumber: "",
+      accountHolderName: "",
+      instructions: "",
+    });
+  }
+
+  async function togglePlatformAccount(account) {
+    try {
+      await api.patch(`/admin/platform-payment-accounts/${account._id}`, {
+        enabled: !account.enabled,
+      });
+      await loadPlatformAccounts();
+    } catch (err) {
+      setToast({ type: "error", text: err.response?.data?.error || "Could not update payment account" });
+    }
+  }
+
+  async function deletePlatformAccount(account) {
+    try {
+      await api.delete(`/admin/platform-payment-accounts/${account._id}`);
+      await loadPlatformAccounts();
+      setToast({ type: "success", text: "Platform receiving account deleted." });
+    } catch (err) {
+      setToast({ type: "error", text: err.response?.data?.error || "Could not delete payment account" });
+    }
+  }
+
+  async function saveSiteContent(event) {
+    event.preventDefault();
+    setPlatformSaving(true);
+    try {
+      const { data } = await api.patch("/admin/platform-settings", { siteContent: contentForm });
+      setPlatformSettings(data.settings);
+      await refreshPlatformContent();
+      setToast({ type: "success", text: "Terms, privacy, and footer contact details updated." });
+    } catch (err) {
+      setToast({ type: "error", text: err.response?.data?.error || "Could not update site content" });
+    } finally {
+      setPlatformSaving(false);
+    }
+  }
+
+  async function decideBankTransfer(item, decision) {
+    const reason = String(reviewReasons[item._id] || "").trim();
+    if (!reason) {
+      setToast({ type: "error", text: "Enter a review reason before approving or rejecting." });
+      return;
+    }
+    setReviewSavingId(item._id);
+    try {
+      await api.patch(`/admin/bank-transfers/${item._id}/decision`, { decision, reason });
+      setReviewReasons((current) => ({ ...current, [item._id]: "" }));
+      await Promise.all([loadBankTransfers(), loadTopups(), loadOverview(), loadBusinesses()]);
+      setToast({ type: "success", text: decision === "approve" ? "Payment approved and DU PT credited." : "Payment rejected." });
+    } catch (err) {
+      setToast({ type: "error", text: err.response?.data?.error || "Could not review payment" });
+    } finally {
+      setReviewSavingId("");
+    }
+  }
+
+  async function openBankReceipt(item) {
+    try {
+      const { data } = await api.get(`/billing/bank-transfers/${item._id}/receipt`, {
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(data);
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      setToast({ type: "error", text: err.response?.data?.error || "Could not open receipt" });
     }
   }
 
@@ -507,7 +736,7 @@ export default function AdminDashboard() {
       setVerifyResult(data);
       loadBusinesses();
     } catch (err) {
-      setVerifyError(err.response?.data?.error || err.response?.data?.userMessage || "Could not run this verification.");
+      setVerifyError(addTryAgain(err.response?.data?.error || err.response?.data?.userMessage || "Could not run this verification."));
     } finally {
       setVerifySubmitting(false);
     }
@@ -520,7 +749,7 @@ export default function AdminDashboard() {
   const verifySelectedBusiness = businesses.find((b) => b._id === verifyBusinessId) || null;
 
   return (
-    <div className="h-screen bg-paper dark:bg-ink flex flex-col overflow-hidden">
+    <div className="h-screen bg-paper text-ink dark:bg-ink dark:text-paper flex flex-col overflow-hidden">
       <TopBar dark />
       <Toast toast={toast} onClose={() => setToast(null)} />
 
@@ -753,13 +982,15 @@ export default function AdminDashboard() {
                               key={account._id}
                               type="button"
                               onClick={() => setVerifyBank(account.provider)}
+                              aria-label={account.provider}
+                              title={account.provider}
                               className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
                                 verifyBank === account.provider
                                   ? "border-seal bg-seal/10 text-sealDark"
                                   : "border-black/10 dark:border-line text-ink/60 dark:text-mist hover:border-seal/40"
                               }`}
                             >
-                              {account.provider}
+                              <ProviderBadge provider={account.provider} showLabel={false} />
                             </button>
                           ))}
                         </div>
@@ -776,7 +1007,7 @@ export default function AdminDashboard() {
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="text-xs font-medium text-ink/60 dark:text-mist mb-1 block">Expected amount (ETB)</label>
                         <input
@@ -812,60 +1043,46 @@ export default function AdminDashboard() {
                     </div>
 
                     {verifyError && (
-                      <p className="text-sm text-alarm">{verifyError}</p>
+                      <p className="rounded-xl bg-ink p-3 text-sm text-white dark:bg-black">{verifyError}</p>
                     )}
 
                     <button
                       type="submit"
                       disabled={verifySubmitting}
-                      className="bg-seal text-white rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
+                      className="bg-seal text-ink dark:text-paper rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
                     >
                       {verifySubmitting ? "Verifying…" : "Run verification"}
                     </button>
                   </form>
 
                   {verifyResult && (
-                    <div className="mt-6 pt-5 border-t border-black/5 dark:border-line">
+                    <div
+                      className={`mt-6 rounded-2xl border p-4 ${
+                        VERIFY_STATUS_STYLE[verifyResult.status] || VERIFY_STATUS_STYLE.SITE_ERROR
+                      }`}
+                    >
                       <div className="flex items-center gap-2 mb-2">
-                        <span
-                          className={`text-xs font-medium uppercase tracking-wide rounded-full px-2.5 py-1 ${
-                            verifyResult.verified
-                              ? "bg-seal/10 text-sealDark border border-seal/30"
-                              : "bg-alarm/10 text-alarm border border-alarm/30"
-                          }`}
-                        >
+                        <span className="text-xs font-semibold uppercase tracking-wide">
                           {verifyResult.status || (verifyResult.verified ? "VALID" : "NOT VERIFIED")}
                         </span>
                         {verifyResult.amount !== undefined && verifyResult.amount !== null && (
-                          <span className="text-xs text-ink/40 dark:text-mist">{verifyResult.amount} ETB</span>
+                          <span className="text-xs opacity-70">{verifyResult.amount} ETB</span>
                         )}
                       </div>
-                      <p className="text-sm text-ink dark:text-paper">{verifyResult.userMessage}</p>
+                      <p className="text-sm">{adminVerificationMessage(verifyResult)}</p>
 
-                      {/* Client message section — same provider message a client
-                          would see, kept here so the admin can copy/relay it. */}
-                      {verifyResult.providerName && (
-                        <div className="mt-3 bg-paper/70 dark:bg-[#1a1a1a] border border-black/10 dark:border-line rounded-xl p-3">
-                          <p className="text-[11px] uppercase tracking-wide text-ink/40 dark:text-mist mb-1">
-                            {verifyResult.providerName}
-                          </p>
-                          {verifyResult.providerMessage && (
-                            <p className="text-sm text-ink/70 dark:text-mist">{verifyResult.providerMessage}</p>
-                          )}
-                          {verifyResult.providerLink && (
-                            <a
-                              href={verifyResult.providerLink}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-xs text-sealDark underline underline-offset-2 mt-1 inline-block"
-                            >
-                              Open receipt link
-                            </a>
-                          )}
-                        </div>
+                      {verifyResult.providerLink && (
+                        <a
+                          href={verifyResult.providerLink}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-2 inline-block text-xs font-medium underline underline-offset-2"
+                        >
+                          Open receipt link
+                        </a>
                       )}
 
-                      <p className="text-xs text-ink/40 dark:text-mist mt-3">
+                      <p className="mt-3 text-xs opacity-70">
                         {verifySelectedBusiness?.businessName || "Client"}'s balance after this check: {verifyResult.duptBalance ?? "—"} DU PT
                       </p>
                     </div>
@@ -886,7 +1103,9 @@ export default function AdminDashboard() {
               <option value="">All statuses</option>
               <option value="success">Success</option>
               <option value="pending">Pending</option>
+              <option value="pending_review">Pending review</option>
               <option value="failed">Failed</option>
+              <option value="rejected">Rejected</option>
             </select>
             <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
               <table className="w-full text-sm min-w-[640px]">
@@ -894,22 +1113,24 @@ export default function AdminDashboard() {
                   <tr>
                     <th className="py-2 font-medium">Business</th>
                     <th className="font-medium">Amount</th>
+                    <th className="font-medium">Method</th>
                     <th className="font-medium">Status</th>
                     <th className="font-medium">Initiated</th>
                   </tr>
                 </thead>
                 <tbody>
                   {topups.length === 0 && (
-                    <tr><td colSpan={4} className="py-6 text-center text-ink/30">No top-ups found</td></tr>
+                    <tr><td colSpan={5} className="py-6 text-center text-ink/30">No top-ups found</td></tr>
                   )}
                   {topups.map((t) => (
                     <tr key={t._id} className="border-b border-black/5 dark:border-line last:border-0">
                       <td className="py-2.5">{t.businessId?.businessName || "—"}</td>
                       <td>{t.amount} ETB</td>
+                      <td>{t.paymentMethod === "bank_transfer" ? "Bank transfer" : "Chapa"}</td>
                       <td>
                         <span
                           className={
-                            t.status === "success" ? "text-seal" : t.status === "failed" ? "text-alarm" : "text-ink/40 dark:text-mist"
+                            t.status === "success" ? "text-seal" : ["failed", "rejected"].includes(t.status) ? "text-alarm" : "text-ink/40 dark:text-mist"
                           }
                         >
                           {t.status}
@@ -923,6 +1144,80 @@ export default function AdminDashboard() {
             </div>
           </section>
         )}
+
+        {tab === "Payment Reviews" && (
+          <div className="space-y-4">
+            <section className="bg-white dark:bg-panel rounded-2xl border border-black/5 dark:border-line shadow-sm p-4 sm:p-5">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="mr-auto">
+                  <h2 className="font-display font-semibold text-ink dark:text-paper">Direct payment receipt reviews</h2>
+                  <p className="text-xs text-ink/40 dark:text-mist mt-1">Unconfirmed receipts never credit a balance until an admin approves them.</p>
+                </div>
+                <select value={bankTransferFilter} onChange={(event) => setBankTransferFilter(event.target.value)} className="border border-black/10 dark:border-line rounded-lg text-sm px-2 py-1.5 bg-transparent">
+                  <option value="pending_review">Waiting for review</option>
+                  <option value="success">Approved</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="all">All bank transfers</option>
+                </select>
+              </div>
+            </section>
+
+            {bankTransfers.length === 0 && (
+              <section className="bg-white dark:bg-panel rounded-2xl border border-black/5 dark:border-line p-6 text-sm text-ink/40 dark:text-mist text-center">
+                No bank transfers found for this filter.
+              </section>
+            )}
+
+            {bankTransfers.map((item) => {
+              const checks = item.automaticReview || {};
+              return (
+                <section key={item._id} className="bg-white dark:bg-panel rounded-2xl border border-black/5 dark:border-line shadow-sm p-4 sm:p-5">
+                  <div className="flex flex-col lg:flex-row gap-5">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-display font-semibold text-ink dark:text-paper">{item.businessId?.businessName || "Unknown business"}</h3>
+                        <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${item.status === "success" ? "bg-seal/10 text-sealDark" : item.status === "rejected" ? "bg-alarm/10 text-alarm" : "bg-amber-100 text-amber-800"}`}>
+                          {item.status.replaceAll("_", " ")}
+                        </span>
+                      </div>
+                      <p className="text-sm mt-2">ETB {item.amount} for {item.duptAmount} DU PT · {item.purchaseType.replaceAll("_", " ")}</p>
+                      <p className="text-xs text-ink/45 dark:text-mist mt-1">{item.bankProvider} · {item.paymentAccountId?.accountNumber || "Account unavailable"} · {item.paymentAccountId?.accountHolderName || ""}</p>
+                      <p className="text-xs text-ink/45 dark:text-mist mt-1">Submitted {new Date(item.submittedAt || item.createdAt).toLocaleString()} · {item.txRef}</p>
+
+                      <div className="grid sm:grid-cols-2 gap-2 mt-4 text-xs">
+                        <ReviewCheck label="Provider confirmed" value={checks.providerConfirmed} />
+                        <ReviewCheck label="Exact amount" value={checks.amountMatches} detail={checks.confirmedAmount != null ? `ETB ${checks.confirmedAmount}` : "Not available"} />
+                        <ReviewCheck label="Correct receiver" value={checks.receiverMatches} />
+                        <ReviewCheck label="Unique reference" value={checks.duplicateReference === true ? false : checks.referencePresent} />
+                      </div>
+                      {item.reviewReason && <p className="mt-3 text-xs bg-paper dark:bg-ink/50 rounded-lg p-2 text-ink/60 dark:text-mist">Automatic review: {item.reviewReason}</p>}
+                    </div>
+
+                    <div className="lg:w-72 space-y-3">
+                      <button type="button" onClick={() => openBankReceipt(item)} className="w-full border border-seal text-sealDark dark:text-seal rounded-lg px-3 py-2 text-sm font-medium">Open uploaded receipt</button>
+                      {item.status === "pending_review" && (
+                        <>
+                          <textarea
+                            value={reviewReasons[item._id] || ""}
+                            onChange={(event) => setReviewReasons((current) => ({ ...current, [item._id]: event.target.value }))}
+                            placeholder="Review reason (required)"
+                            rows={3}
+                            className="w-full border border-black/10 dark:border-line bg-transparent rounded-lg px-3 py-2 text-sm"
+                          />
+                          <div className="grid grid-cols-2 gap-2">
+                            <button type="button" disabled={reviewSavingId === item._id} onClick={() => decideBankTransfer(item, "approve")} className="bg-seal text-ink rounded-lg px-3 py-2 text-sm font-semibold disabled:opacity-50">Approve</button>
+                            <button type="button" disabled={reviewSavingId === item._id} onClick={() => decideBankTransfer(item, "reject")} className="bg-alarm/10 text-alarm rounded-lg px-3 py-2 text-sm font-semibold disabled:opacity-50">Reject</button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        )}
+
         {tab === "Packages" && (
           <div className="space-y-6">
             <section className="bg-white dark:bg-panel rounded-2xl border border-black/5 dark:border-line shadow-sm p-4 sm:p-5">
@@ -1383,6 +1678,25 @@ export default function AdminDashboard() {
             </section>
 
             <section className="bg-white dark:bg-panel rounded-2xl border border-black/5 dark:border-line shadow-sm p-4 sm:p-5">
+              <h2 className="font-display font-semibold text-ink dark:text-paper mb-1">Client payment methods</h2>
+              <p className="text-xs text-ink/40 dark:text-mist mb-4">Turn Chapa and direct bank transfer on or off independently.</p>
+              <div className="grid sm:grid-cols-2 gap-3">
+                {[
+                  ["chapaEnabled", "Chapa checkout"],
+                  ["bankTransferEnabled", "Direct bank transfer"],
+                ].map(([key, label]) => {
+                  const enabled = platformSettings.paymentMethods?.[key] === true;
+                  return (
+                    <label key={key} className="flex items-center justify-between gap-3 border border-black/10 dark:border-line rounded-xl px-3 py-3">
+                      <span className="text-sm font-medium text-ink dark:text-paper">{label}</span>
+                      <input type="checkbox" role="switch" checked={enabled} onChange={() => togglePaymentMethod(key)} className="h-5 w-5 accent-[#12A783]" />
+                    </label>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="bg-white dark:bg-panel rounded-2xl border border-black/5 dark:border-line shadow-sm p-4 sm:p-5">
               <h2 className="font-display font-semibold text-ink dark:text-paper mb-1">Payment providers</h2>
               <p className="text-xs text-ink/40 dark:text-mist mb-4">
                 Platform-wide kill switch. Disabling a provider here blocks verification for it across every
@@ -1423,6 +1737,56 @@ export default function AdminDashboard() {
                   </div>
                 ))}
               </div>
+            </section>
+
+            <section className="bg-white dark:bg-panel rounded-2xl border border-black/5 dark:border-line shadow-sm p-4 sm:p-5">
+              <h2 className="font-display font-semibold text-ink dark:text-paper mb-1">Direct payment accounts</h2>
+              <p className="text-xs text-ink/40 dark:text-mist mb-4">These receiving accounts are shown to clients who choose bank transfer.</p>
+
+              <div className="space-y-2 mb-5">
+                {platformAccounts.length === 0 && <p className="text-sm text-ink/40 dark:text-mist">No receiving accounts added yet.</p>}
+                {platformAccounts.map((account) => (
+                  <div key={account._id} className="flex flex-col sm:flex-row sm:items-center gap-3 border border-black/10 dark:border-line rounded-xl p-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold">{account.label || account.provider} <span className="font-normal text-ink/40 dark:text-mist">· {account.provider}</span></p>
+                      <p className="text-sm font-mono break-all">{account.accountNumber}</p>
+                      <p className="text-xs text-ink/45 dark:text-mist">{account.accountHolderName}</p>
+                    </div>
+                    <button type="button" onClick={() => togglePlatformAccount(account)} className={`text-xs font-semibold rounded-full px-2.5 py-1 ${account.enabled ? "bg-seal/10 text-sealDark" : "bg-alarm/10 text-alarm"}`}>{account.enabled ? "Enabled" : "Disabled"}</button>
+                    <button type="button" onClick={() => editPlatformAccount(account)} className="text-xs text-sealDark dark:text-seal">Edit</button>
+                    <button type="button" onClick={() => deletePlatformAccount(account)} className="text-xs text-alarm">Delete</button>
+                  </div>
+                ))}
+              </div>
+
+              <form onSubmit={submitPlatformAccount} className="grid sm:grid-cols-2 gap-3 border-t border-black/5 dark:border-line pt-4">
+                <select value={platformAccountForm.provider} onChange={(event) => setPlatformAccountForm((current) => ({ ...current, provider: event.target.value }))} className="border border-black/10 dark:border-line bg-transparent rounded-lg px-3 py-2 text-sm">
+                  {(platformAccountProviders.length ? platformAccountProviders : ["CBE", "Telebirr", "Dashen", "Abyssinia", "Awash"]).map((provider) => <option key={provider} value={provider}>{provider}</option>)}
+                </select>
+                <input value={platformAccountForm.label} onChange={(event) => setPlatformAccountForm((current) => ({ ...current, label: event.target.value }))} placeholder="Display label (optional)" className="border border-black/10 dark:border-line bg-transparent rounded-lg px-3 py-2 text-sm" />
+                <input required value={platformAccountForm.accountNumber} onChange={(event) => setPlatformAccountForm((current) => ({ ...current, accountNumber: event.target.value }))} placeholder="Account or wallet number" className="border border-black/10 dark:border-line bg-transparent rounded-lg px-3 py-2 text-sm" />
+                <input required value={platformAccountForm.accountHolderName} onChange={(event) => setPlatformAccountForm((current) => ({ ...current, accountHolderName: event.target.value }))} placeholder="Account holder name" className="border border-black/10 dark:border-line bg-transparent rounded-lg px-3 py-2 text-sm" />
+                <textarea value={platformAccountForm.instructions} onChange={(event) => setPlatformAccountForm((current) => ({ ...current, instructions: event.target.value }))} placeholder="Extra payment instructions (optional)" rows={2} className="sm:col-span-2 border border-black/10 dark:border-line bg-transparent rounded-lg px-3 py-2 text-sm" />
+                <div className="sm:col-span-2 flex gap-2">
+                  <button disabled={platformAccountSaving} className="flex-1 bg-ink text-paper rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-50">{platformAccountSaving ? "Saving…" : editingPlatformAccountId ? "Save account changes" : "Add receiving account"}</button>
+                  {editingPlatformAccountId && <button type="button" onClick={cancelPlatformAccountEdit} className="border border-black/10 dark:border-line rounded-lg px-4 py-2.5 text-sm">Cancel</button>}
+                </div>
+              </form>
+            </section>
+
+            <section className="bg-white dark:bg-panel rounded-2xl border border-black/5 dark:border-line shadow-sm p-4 sm:p-5">
+              <h2 className="font-display font-semibold text-ink dark:text-paper mb-1">Terms, privacy, and contact</h2>
+              <p className="text-xs text-ink/40 dark:text-mist mb-4">Legal text is plain text. Leave a legal field empty to keep the built-in policy. Contact details appear only in the footer.</p>
+              <form onSubmit={saveSiteContent} className="space-y-4">
+                <label className="block"><span className="text-xs font-semibold uppercase tracking-wide text-ink/50 dark:text-mist">Terms of Service</span><textarea value={contentForm.termsBody} onChange={(event) => setContentForm((current) => ({ ...current, termsBody: event.target.value }))} rows={8} className="w-full mt-1 border border-black/10 dark:border-line bg-transparent rounded-lg px-3 py-2 text-sm" placeholder="Leave blank to use the built-in Terms of Service" /></label>
+                <label className="block"><span className="text-xs font-semibold uppercase tracking-wide text-ink/50 dark:text-mist">Privacy Policy</span><textarea value={contentForm.privacyBody} onChange={(event) => setContentForm((current) => ({ ...current, privacyBody: event.target.value }))} rows={8} className="w-full mt-1 border border-black/10 dark:border-line bg-transparent rounded-lg px-3 py-2 text-sm" placeholder="Leave blank to use the built-in Privacy Policy" /></label>
+                <div className="grid sm:grid-cols-3 gap-3">
+                  <input type="email" value={contentForm.contactEmail} onChange={(event) => setContentForm((current) => ({ ...current, contactEmail: event.target.value }))} placeholder="Contact email" className="border border-black/10 dark:border-line bg-transparent rounded-lg px-3 py-2 text-sm" />
+                  <input value={contentForm.contactPhone} onChange={(event) => setContentForm((current) => ({ ...current, contactPhone: event.target.value }))} placeholder="Contact phone" className="border border-black/10 dark:border-line bg-transparent rounded-lg px-3 py-2 text-sm" />
+                  <input value={contentForm.contactAddress} onChange={(event) => setContentForm((current) => ({ ...current, contactAddress: event.target.value }))} placeholder="Contact address" className="border border-black/10 dark:border-line bg-transparent rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <button disabled={platformSaving} className="bg-seal text-ink rounded-lg px-4 py-2.5 text-sm font-semibold disabled:opacity-50">{platformSaving ? "Saving…" : "Save site content"}</button>
+              </form>
             </section>
           </div>
         )}
@@ -1527,6 +1891,18 @@ function Info({ label, value }) {
     <div>
       <p className="text-xs text-ink/40 dark:text-mist uppercase tracking-wide">{label}</p>
       <p className="text-ink dark:text-paper font-medium">{value}</p>
+    </div>
+  );
+}
+
+function ReviewCheck({ label, value, detail = "" }) {
+  const known = value === true || value === false;
+  return (
+    <div className="border border-black/5 dark:border-line rounded-lg px-2.5 py-2 flex items-center justify-between gap-2">
+      <span>{label}{detail ? ` · ${detail}` : ""}</span>
+      <span className={value === true ? "text-seal font-semibold" : value === false ? "text-alarm font-semibold" : "text-ink/35 dark:text-mist"}>
+        {known ? (value ? "Pass" : "Check") : "Unknown"}
+      </span>
     </div>
   );
 }

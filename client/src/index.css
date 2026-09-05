@@ -2,31 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ============================================================
-   DESIGN SYSTEM — DU Verify
-   - Monochrome: pure white (light) / pure black (dark)
-   - Single brand accent: #12A783 (verification teal)
-   - Red (#D5573B) reserved for caution / terminated only
-   - SHARP corners everywhere — no rounded elements
-   - Compact typography
-============================================================ */
+/* DU Verify's interface is calm and tactile: warm neutral ground, strong ink,
+   and one verification green. Status red stays reserved for real problems. */
 
 @layer base {
   /* Compact type scale */
   html {
     font-size: 14px;
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
 
   body {
-    @apply bg-white text-ink dark:bg-[#222222] dark:text-white;
-  }
-
-  /* SHARP CORNERS — enforced globally */
-  *,
-  *::before,
-  *::after {
-    border-radius: 0 !important;
+    @apply bg-[#f3f5f0] text-ink dark:bg-[#101714] dark:text-white;
+    min-width: 320px;
+    min-height: 100vh;
   }
 
   * {
@@ -35,6 +25,45 @@
 
   ::selection {
     background: #12a78355;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    font: inherit;
+  }
+}
+
+@layer components {
+  .app-atmosphere {
+    background-color: #f3f5f0;
+    background-image:
+      radial-gradient(circle at 8% 8%, rgba(18, 167, 131, 0.09), transparent 30rem),
+      radial-gradient(circle at 92% 22%, rgba(221, 190, 126, 0.12), transparent 24rem);
+  }
+
+  .dark .app-atmosphere {
+    background-color: #101714;
+    background-image:
+      radial-gradient(circle at 8% 8%, rgba(18, 167, 131, 0.12), transparent 30rem),
+      radial-gradient(circle at 92% 22%, rgba(221, 190, 126, 0.05), transparent 24rem);
+  }
+
+  .workflow-card {
+    @apply border border-black/[0.07] bg-white/95 shadow-[0_24px_70px_-38px_rgba(18,32,27,0.42)] dark:border-white/10 dark:bg-[#17211d]/95;
+  }
+
+  .workflow-step {
+    @apply border-b border-black/[0.07] px-5 py-5 last:border-b-0 sm:px-7 sm:py-6 dark:border-white/10;
+  }
+
+  .field-label {
+    @apply block text-[11px] font-bold uppercase tracking-[0.14em] text-ink/50 dark:text-white/50;
+  }
+
+  .field-control {
+    @apply w-full rounded-xl border border-black/10 bg-[#f7f8f4] px-4 py-3 text-ink shadow-inner shadow-black/[0.02] transition placeholder:text-ink/30 hover:border-black/20 focus:border-seal focus:bg-white focus:outline-none focus:ring-4 focus:ring-seal/10 dark:border-white/10 dark:bg-black/20 dark:text-white dark:placeholder:text-white/30 dark:hover:border-white/20 dark:focus:border-seal dark:focus:bg-black/30;
   }
 }
 
@@ -106,5 +135,12 @@
   .animate-shake,
   .animate-glow {
     animation: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
   }
 }

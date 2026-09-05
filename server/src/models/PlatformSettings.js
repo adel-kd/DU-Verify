@@ -34,6 +34,25 @@ const platformSettingsSchema = new mongoose.Schema({
     packagePurchaseEnabled: { type: Boolean, default: true },
   },
 
+  // Chapa and direct bank transfer are independent purchase paths. At least
+  // one should normally remain enabled, but admins may temporarily disable
+  // both while billing maintenance is in progress.
+  paymentMethods: {
+    chapaEnabled: { type: Boolean, default: true },
+    bankTransferEnabled: { type: Boolean, default: false },
+  },
+
+  // Public copy managed by the platform admin. Empty legal bodies keep the
+  // built-in client copy in place until an admin intentionally replaces it.
+  siteContent: {
+    termsBody: { type: String, default: "" },
+    privacyBody: { type: String, default: "" },
+    legalUpdatedAt: { type: Date, default: null },
+    contactEmail: { type: String, default: "", trim: true },
+    contactPhone: { type: String, default: "", trim: true },
+    contactAddress: { type: String, default: "", trim: true },
+  },
+
   updatedAt: { type: Date, default: Date.now },
 });
 

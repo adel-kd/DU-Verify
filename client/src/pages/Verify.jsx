@@ -5,6 +5,15 @@ import {
 } from "react";
 
 import jsQR from "jsqr";
+import {
+  AlertTriangle,
+  ArrowRight,
+  Check,
+  FileCheck2,
+  ReceiptText,
+  ScanLine,
+  UploadCloud,
+} from "lucide-react";
 
 import api from "../lib/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -14,6 +23,7 @@ import Seal from "../components/Seal.jsx";
 import CameraCapture from "../components/CameraCapture.jsx";
 import AnnouncementBanner from "../components/AnnouncementBanner.jsx";
 import UnverifiedNotice from "../components/UnverifiedNotice.jsx";
+import ProviderBadge from "../components/ProviderBadge.jsx";
 
 
 /* ============================================================
@@ -35,11 +45,33 @@ const SEAL_STATE = {
   AMOUNT_MISMATCH: "mismatch",
   RECEIVER_MISMATCH: "mismatch",
   NOT_VERIFIED: "error",
-  OCR_FAILED: "error",
+  OCR_FAILED: "unavailable",
   PROVIDER_ERROR: "unavailable",
   PROVIDER_UNAVAILABLE: "unavailable",
-  INVALID_FORMAT: "error",
+  INVALID_FORMAT: "unavailable",
+  SITE_ERROR: "unavailable",
 };
+
+const RESULT_TONE = {
+  VALID: "border-seal/30 bg-seal/[0.06]",
+  AMOUNT_MISMATCH: "border-[#E2A63B]/40 bg-[#E2A63B]/10",
+  RECEIVER_MISMATCH: "border-[#E2A63B]/40 bg-[#E2A63B]/10",
+  NOT_VERIFIED: "border-alarm/35 bg-alarm/[0.07]",
+  ALREADY_USED: "border-alarm/35 bg-alarm/[0.07]",
+  OCR_FAILED: "border-ink/20 bg-ink/[0.04] dark:border-white/15 dark:bg-black/20",
+  PROVIDER_ERROR: "border-ink/20 bg-ink/[0.04] dark:border-white/15 dark:bg-black/20",
+  PROVIDER_UNAVAILABLE: "border-ink/20 bg-ink/[0.04] dark:border-white/15 dark:bg-black/20",
+  INVALID_FORMAT: "border-ink/20 bg-ink/[0.04] dark:border-white/15 dark:bg-black/20",
+  SITE_ERROR: "border-ink/20 bg-ink/[0.04] dark:border-white/15 dark:bg-black/20",
+};
+
+const TRY_AGAIN_STATUSES = new Set([
+  "OCR_FAILED",
+  "PROVIDER_ERROR",
+  "PROVIDER_UNAVAILABLE",
+  "INVALID_FORMAT",
+  "SITE_ERROR",
+]);
 
 
 const RESULT_COPY = {
@@ -56,7 +88,7 @@ const RESULT_COPY = {
     "This transaction is real, but it was not paid to this business's account.",
 
   NOT_VERIFIED:
-    "Unable to verify this payment. Please contact the administrator.",
+    "Payment unconfirmed. The payment provider was reached but did not confirm this transaction.",
 
   OCR_FAILED:
     "Could not read this receipt.",
@@ -68,7 +100,10 @@ const RESULT_COPY = {
     "We couldn't reliably reach the payment provider. This does not mean the payment is invalid. Please try again.",
 
   INVALID_FORMAT:
-    "This doesn't look like a valid receipt for the selected bank.",
+    "This doesn't look like a valid receipt for the selected bank. Please try again.",
+
+  SITE_ERROR:
+    "Something went wrong while completing this check. Please try again.",
 };
 
 
@@ -96,6 +131,39 @@ const OCR_FAILURE_COPY = {
 
 function providerLabel(provider) {
   return BANK_LABELS[provider] || provider;
+}
+
+function withTryAgain(message) {
+  const value = String(message || "").trim();
+
+  if (!value) {
+    return "We couldn't complete this check. Please try again.";
+  }
+
+  if (/please try again[.!]?$/i.test(value)) {
+    return value;
+  }
+
+  const sentence = /[.!?]$/.test(value) ? value : `${value}.`;
+  return `${sentence} Please try again.`;
+}
+
+function resultMessage(result) {
+  if (result.status === "NOT_VERIFIED") {
+    return RESULT_COPY.NOT_VERIFIED;
+  }
+
+  let message = result.userMessage;
+
+  if (!message && result.status === "OCR_FAILED") {
+    message = OCR_FAILURE_COPY[result.failureReason] || RESULT_COPY.OCR_FAILED;
+  }
+
+  message = message || RESULT_COPY[result.status] || "Verification completed.";
+
+  return TRY_AGAIN_STATUSES.has(result.status)
+    ? withTryAgain(message)
+    : message;
 }
 
 
@@ -1002,10 +1070,6 @@ export default function Verify() {
       }
 
     } catch (err) {
-      const detail =
-        err.response?.data
-          ?.detail;
-
       const message =
         err.response?.data
           ?.error ||
@@ -1015,16 +1079,11 @@ export default function Verify() {
 
       console.error(
         "[verify] client error:",
-        message,
-        detail || ""
+        message
       );
 
 
-      setError(
-        detail
-          ? `${message}: ${detail}`
-          : message
-      );
+      setError(withTryAgain(message));
 
     } finally {
       setLoading(false);
@@ -1070,7 +1129,7 @@ export default function Verify() {
   ========================================================== */
 
   return (
-    <div className="min-h-screen bg-paper dark:bg-ink flex flex-col">
+    <div className="app-atmosphere min-h-screen flex flex-col">
 
       <TopBar
         duptBalance={
@@ -1079,7 +1138,7 @@ export default function Verify() {
       />
 
 
-      <main className="flex-1 w-full max-w-md mx-auto p-4 sm:p-6 space-y-4">
+      <main className="mx-auto w-full max-w-6xl flex-1 space-y-5 px-4 py-6 sm:px-6 sm:py-9 lg:px-8">
 
         {/* Email verification gate */}
         <UnverifiedNotice />
@@ -1097,16 +1156,52 @@ export default function Verify() {
           user.duptBalance <
           user.lowBalanceThreshold && (
 
-            <div className="bg-alarm/10 border border-alarm/30 text-alarm rounded-2xl px-4 py-2.5 text-sm font-medium">
-
-              ⚠️ This business's DU PT
-              balance is low (
-              {user.duptBalance}{" "}
-              DU PT). Let the owner know
-              it needs a top-up soon.
+            <div className="flex items-start gap-3 rounded-2xl border border-alarm/25 bg-alarm/10 px-4 py-3 text-sm font-medium text-alarm">
+              <AlertTriangle className="mt-0.5 shrink-0" size={17} aria-hidden="true" />
+              <span>
+                This business has {user.duptBalance} DU PT remaining. Let the owner know a top-up will be needed soon.
+              </span>
 
             </div>
           )}
+
+        <header className="max-w-2xl pt-2">
+          <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-sealDark dark:text-seal">
+            Payment desk
+          </p>
+          <h1 className="font-display text-3xl font-semibold tracking-[-0.045em] text-ink sm:text-4xl dark:text-white">
+            Verify a payment with confidence.
+          </h1>
+          <p className="mt-3 max-w-xl text-sm leading-6 text-ink/55 dark:text-white/55">
+            Add the details you have. A receipt image or transaction reference is enough to begin.
+          </p>
+        </header>
+
+        <div className="grid items-start gap-5 lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-7">
+          <aside className="hidden rounded-[24px] border border-black/[0.07] bg-[#15221d] p-6 text-white shadow-[0_24px_60px_-40px_rgba(0,0,0,0.8)] lg:sticky lg:top-24 lg:block">
+            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-seal">A quick, safe check</p>
+            <h2 className="mt-2 font-display text-xl font-semibold tracking-tight">Three details. One clear answer.</h2>
+            <ol className="mt-6 space-y-5">
+              <li className="flex gap-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10 text-seal"><ReceiptText size={16} aria-hidden="true" /></span>
+                <span><strong className="block text-sm font-semibold">Choose the source</strong><span className="mt-0.5 block text-xs leading-5 text-white/55">Tap the logo shown on the receipt.</span></span>
+              </li>
+              <li className="flex gap-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10 text-seal"><ScanLine size={16} aria-hidden="true" /></span>
+                <span><strong className="block text-sm font-semibold">Add the receipt</strong><span className="mt-0.5 block text-xs leading-5 text-white/55">Upload, photograph, or enter its reference.</span></span>
+              </li>
+              <li className="flex gap-3">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10 text-seal"><FileCheck2 size={16} aria-hidden="true" /></span>
+                <span><strong className="block text-sm font-semibold">Review the answer</strong><span className="mt-0.5 block text-xs leading-5 text-white/55">Match the amount, names, and payment time.</span></span>
+              </li>
+            </ol>
+            <div className="mt-6 border-t border-white/10 pt-4 text-xs leading-5 text-white/45">
+              Each completed check costs 1 DU PT. Unavailable-provider checks are refunded automatically.
+            </div>
+          </aside>
+
+          <div className="min-w-0 space-y-4">
+            <div className="workflow-card overflow-visible rounded-[28px]">
 
 
         {/* =====================================================
@@ -1117,17 +1212,23 @@ export default function Verify() {
             - payment account information
         ====================================================== */}
 
-        <section className="bg-white rounded-2xl shadow-sm border border-black/5 dark:border-line p-4">
+        <section className="workflow-step">
 
-          <label className="text-xs font-semibold tracking-wide text-ink/50 dark:text-mist uppercase">
-            Payment provider
-          </label>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <span className="field-label">01 / Payment source</span>
+              <h2 className="mt-1.5 font-display text-lg font-semibold tracking-tight text-ink dark:text-white">Which logo is on the receipt?</h2>
+            </div>
+            {selectedAccount && (
+              <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-seal/10 px-2.5 py-1 text-[11px] font-bold text-sealDark dark:text-seal">
+                <Check size={13} aria-hidden="true" /> Selected
+              </span>
+            )}
+          </div>
 
 
-          <p className="text-xs text-ink/40 dark:text-mist mt-1">
-            Select a provider to verify. Hover
-            or long-press to show the customer
-            where to pay.
+          <p className="mt-1.5 text-xs leading-5 text-ink/45 dark:text-white/45">
+            Tap a logo to select it. Hold or hover to see the payment destination.
           </p>
 
 
@@ -1189,7 +1290,7 @@ export default function Verify() {
           {!accountsLoading &&
             paymentAccounts.length > 0 && (
 
-              <div className="flex flex-wrap gap-2 mt-3">
+              <div className="mt-4 flex flex-wrap gap-3" role="radiogroup" aria-label="Payment source">
 
                 {paymentAccounts.map(
                   (account) => {
@@ -1243,19 +1344,30 @@ export default function Verify() {
 
                         <button
                           type="button"
+                          role="radio"
+                          aria-checked={isSelected}
+                          aria-label={providerLabel(account.provider)}
+                          title={providerLabel(account.provider)}
                           onClick={() =>
                             selectProvider(
                               account.provider
                             )
                           }
-                          className={`px-3 py-1.5 rounded-full border text-sm font-medium transition ${isSelected
-                            ? "bg-ink text-paper border-ink"
-                            : "bg-white text-ink/70 border-black/10 dark:border-line hover:border-ink/30"
+                          className={`relative flex h-[68px] w-[68px] items-center justify-center rounded-2xl border transition duration-200 ${isSelected
+                            ? "border-seal bg-seal/10 shadow-[0_10px_24px_-16px_rgba(18,167,131,0.9)] ring-2 ring-seal/20"
+                            : "border-black/10 bg-[#f7f8f4] text-ink/70 hover:-translate-y-0.5 hover:border-seal/50 hover:bg-white dark:border-white/10 dark:bg-white/5"
                             }`}
                         >
-
-                          {providerLabel(
-                            account.provider
+                          <ProviderBadge
+                            provider={account.provider}
+                            showLabel={false}
+                            plain
+                            iconSize="h-11 w-11"
+                          />
+                          {isSelected && (
+                            <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-seal text-white dark:border-[#17211d]">
+                              <Check size={11} strokeWidth={3} aria-hidden="true" />
+                            </span>
                           )}
 
                         </button>
@@ -1268,7 +1380,7 @@ export default function Verify() {
                         {isActive && (
 
                           <div
-                            className="absolute z-30 top-full left-0 mt-2 bg-ink text-paper rounded-xl p-3 shadow-xl w-56"
+                            className="absolute left-0 top-full z-30 mt-2 w-60 rounded-2xl border border-white/10 bg-[#13201b] p-4 text-paper shadow-2xl"
                             onMouseEnter={() =>
                               setActiveAccountId(
                                 account._id
@@ -1276,13 +1388,14 @@ export default function Verify() {
                             }
                           >
 
-                            <p className="text-xs text-mist uppercase tracking-wide">
+                            <ProviderBadge
+                              provider={account.provider}
+                              showLabel={false}
+                              plain
+                              iconSize="h-9 w-9"
+                            />
 
-                              {providerLabel(
-                                account.provider
-                              )}
-
-                            </p>
+                            <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.15em] text-seal">Payment destination</p>
 
 
                             <p className="font-mono text-sm mt-1 break-all">
@@ -1341,19 +1454,6 @@ export default function Verify() {
               SELECTED PROVIDER INDICATOR
           ================================================== */}
 
-          {selectedAccount && (
-
-            <p className="text-xs text-seal mt-3 font-medium">
-
-              ✓ Verifying with{" "}
-              {providerLabel(
-                selectedAccount.provider
-              )}
-
-            </p>
-
-          )}
-
         </section>
 
 
@@ -1363,11 +1463,11 @@ export default function Verify() {
 
         {bank === "CBE" && (
 
-          <section className="bg-seal/10 border border-seal/30 rounded-2xl p-4">
+          <section className="workflow-step bg-seal/[0.06]">
 
             {cbeQrDetected ? (
 
-              <div className="rounded-xl bg-white border border-seal/30 p-3">
+              <div className="rounded-xl border border-seal/25 bg-white p-3 dark:bg-black/20">
 
                 <p className="text-xs font-semibold text-seal uppercase tracking-wide">
 
@@ -1386,11 +1486,11 @@ export default function Verify() {
 
             ) : (
 
-              <p className="text-xs text-ink/60 dark:text-mist">
+              <p className="flex items-start gap-2 text-xs leading-5 text-ink/55 dark:text-white/55">
 
-                CBE receipt QR codes are detected
-                automatically when you upload a
-                receipt image.
+                <ScanLine className="mt-0.5 shrink-0 text-seal" size={16} aria-hidden="true" />
+
+                <span>CBE receipt QR codes are detected automatically when you upload a receipt image.</span>
 
               </p>
 
@@ -1407,9 +1507,9 @@ export default function Verify() {
 
         {bank === "CBEBirr" && (
 
-          <section className="bg-white rounded-2xl shadow-sm border border-black/5 dark:border-line p-4">
+          <section className="workflow-step">
 
-            <label className="text-xs font-semibold tracking-wide text-ink/50 dark:text-mist uppercase">
+            <label className="field-label">
 
               Payer phone number
 
@@ -1425,7 +1525,7 @@ export default function Verify() {
                 )
               }
               placeholder="09XXXXXXXX"
-              className="w-full mt-2 border border-black/10 dark:border-line rounded-lg px-3 py-2 text-sm"
+              className="field-control mt-2"
             />
 
 
@@ -1446,16 +1546,17 @@ export default function Verify() {
             EXPECTED AMOUNT
         ====================================================== */}
 
-        <section className="bg-white rounded-2xl shadow-sm border border-black/5 dark:border-line p-4">
+        <section className="workflow-step">
 
-          <label className="text-xs font-semibold tracking-wide text-ink/50 dark:text-mist uppercase">
-
-            Expected amount (ETB)
-
-          </label>
+          <span className="field-label">02 / Amount</span>
+          <div className="mt-1.5 flex items-baseline justify-between gap-3">
+            <label htmlFor="expected-amount" className="font-display text-lg font-semibold tracking-tight text-ink dark:text-white">Expected amount</label>
+            <span className="text-xs text-ink/40 dark:text-white/40">Optional</span>
+          </div>
 
 
           <input
+            id="expected-amount"
             type="number"
             step="0.01"
             min="0"
@@ -1466,7 +1567,7 @@ export default function Verify() {
               )
             }
             placeholder="0.00"
-            className="w-full mt-2 border border-black/10 dark:border-line rounded-lg px-3 py-2 text-lg font-display"
+            className="field-control mt-3 font-display text-xl font-semibold tabular-nums"
           />
 
         </section>
@@ -1476,13 +1577,13 @@ export default function Verify() {
             RECEIPT / CAMERA
         ====================================================== */}
 
-        <section className="bg-white rounded-2xl shadow-sm border border-black/5 dark:border-line p-4">
+        <section className="workflow-step">
 
-          <label className="text-xs font-semibold tracking-wide text-ink/50 dark:text-mist uppercase">
-
-            Receipt / USSD screenshot
-
-          </label>
+          <span className="field-label">03 / Receipt</span>
+          <div className="mt-1.5 flex items-baseline justify-between gap-3">
+            <h2 className="font-display text-lg font-semibold tracking-tight text-ink dark:text-white">Add the payment receipt</h2>
+            <span className="text-xs text-ink/40 dark:text-white/40">Photo or screenshot</span>
+          </div>
 
 
           <button
@@ -1490,7 +1591,7 @@ export default function Verify() {
             onClick={() =>
               fileInput.current?.click()
             }
-            className="mt-2 w-full flex flex-col items-center justify-center gap-2 border-2 border-dashed border-black/15 rounded-xl py-8 text-ink/60 dark:text-mist hover:border-seal hover:text-seal transition overflow-hidden"
+            className="group mt-3 flex min-h-40 w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border border-dashed border-black/20 bg-[#f7f8f4] px-4 py-7 text-ink/55 transition hover:border-seal hover:bg-seal/[0.04] hover:text-sealDark dark:border-white/15 dark:bg-black/20 dark:text-white/55"
           >
 
             {preview ? (
@@ -1498,19 +1599,20 @@ export default function Verify() {
               <img
                 src={preview}
                 alt="Receipt preview"
-                className="max-h-40 rounded-lg"
+                className="max-h-56 rounded-xl object-contain shadow-sm"
               />
 
             ) : (
 
               <>
-                <span className="text-2xl">
-                  📷
+                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-sealDark shadow-sm transition-transform group-hover:-translate-y-0.5 dark:bg-white/10 dark:text-seal">
+                  <UploadCloud size={20} aria-hidden="true" />
                 </span>
 
-                <span className="text-sm">
-                  Tap to snap or upload
+                <span className="font-semibold text-ink dark:text-white">
+                  Tap to upload a receipt
                 </span>
+                <span className="text-xs text-ink/40 dark:text-white/40">Keep all four corners visible</span>
               </>
 
             )}
@@ -1543,9 +1645,9 @@ export default function Verify() {
             TRANSACTION REFERENCE
         ====================================================== */}
 
-        <section className="bg-white rounded-2xl shadow-sm border border-black/5 dark:border-line p-4">
+        <section className="workflow-step">
 
-          <label className="text-xs font-semibold tracking-wide text-ink/50 dark:text-mist uppercase">
+          <label className="field-label">
 
             {bank === "CBE" &&
               cbeQrDetected
@@ -1582,7 +1684,7 @@ export default function Verify() {
             }
             autoComplete="off"
             spellCheck="false"
-            className="w-full mt-2 border border-black/10 dark:border-line rounded-lg px-3 py-2 text-sm font-mono tracking-wide focus:outline-none focus:ring-2 focus:ring-seal/40"
+            className="field-control mt-2 font-mono text-sm tracking-wide"
           />
 
 
@@ -1624,18 +1726,29 @@ export default function Verify() {
             VERIFY BUTTON
         ====================================================== */}
 
-        <button
-          type="button"
-          onClick={handleVerify}
-          disabled={!canVerify}
-          className="w-full bg-seal text-ink dark:text-paper font-semibold rounded-xl py-3.5 disabled:opacity-40 transition"
-        >
+        <div className="px-5 py-5 sm:px-7 sm:py-6">
+          <button
+            type="button"
+            onClick={handleVerify}
+            disabled={!canVerify}
+            className="group flex w-full items-center justify-center gap-2 rounded-xl bg-[#15221d] px-4 py-3.5 font-semibold text-white shadow-[0_14px_28px_-18px_rgba(16,34,27,0.9)] transition hover:bg-[#0d1914] disabled:cursor-not-allowed disabled:opacity-35 dark:bg-seal dark:text-[#10201a] dark:hover:bg-seal/90"
+          >
+            {loading ? (
+              <>
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white dark:border-ink/30 dark:border-t-ink" />
+                Checking payment…
+              </>
+            ) : (
+              <>
+                Verify transaction <span className="text-white/45 dark:text-ink/50">· 1 DU PT</span>
+                <ArrowRight className="transition-transform group-hover:translate-x-0.5" size={17} aria-hidden="true" />
+              </>
+            )}
+          </button>
+          <p className="mt-2.5 text-center text-[11px] text-ink/40 dark:text-white/40">The receipt is checked against the payment network, not the screenshot alone.</p>
+        </div>
 
-          {loading
-            ? "Checking with the provider…"
-            : "Verify transaction · 1 DU PT"}
-
-        </button>
+            </div>
 
 
         {/* =====================================================
@@ -1644,7 +1757,9 @@ export default function Verify() {
 
         {error && (
 
-          <div className="bg-white rounded-2xl border border-alarm/30 p-4 text-alarm text-sm">
+          <div className="flex items-start gap-3 rounded-2xl border border-ink/20 bg-ink p-4 text-sm text-white shadow-sm dark:border-white/15 dark:bg-black">
+
+            <AlertTriangle className="mt-0.5 shrink-0" size={17} aria-hidden="true" />
 
             {error}
 
@@ -1659,7 +1774,7 @@ export default function Verify() {
 
         {result && (
 
-          <section className="bg-white rounded-2xl shadow-sm border border-black/5 dark:border-line p-5 flex gap-4 items-start">
+          <section className={`workflow-card flex items-start gap-4 rounded-[24px] p-5 sm:p-6 ${RESULT_TONE[result.status] || RESULT_TONE.SITE_ERROR}`}>
 
             <Seal
               state={
@@ -1674,38 +1789,13 @@ export default function Verify() {
 
             <div className="flex-1">
 
-              {result.providerName && (
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-sealDark">
-                  {result.providerName}
-                </p>
-              )}
-
               {/* RESULT MESSAGE */}
 
               <p className="text-sm text-ink/60 dark:text-mist">
 
-                {result.userMessage ||
-
-                  (result.status ===
-                    "OCR_FAILED"
-
-                    ? OCR_FAILURE_COPY[
-                    result.failureReason
-                    ] ||
-                    RESULT_COPY.OCR_FAILED
-
-                    : RESULT_COPY[
-                    result.status
-                    ])}
+                {resultMessage(result)}
 
               </p>
-
-              {result.providerMessage &&
-                result.providerMessage !== result.userMessage && (
-                  <p className="text-xs text-ink/45 dark:text-mist mt-1">
-                    {result.providerMessage}
-                  </p>
-                )}
 
               {result.providerLink && (
                 <a
@@ -1717,68 +1807,6 @@ export default function Verify() {
                   Open CBE receipt link
                 </a>
               )}
-
-
-              {/* CBE QR CONFIRMATION */}
-
-              {bank === "CBE" &&
-                cbeQrDetected &&
-                result.status ===
-                "VALID" && (
-
-                  <p className="text-xs text-seal mt-2 font-medium">
-
-                    ✓ Verified using the CBE
-                    receipt QR link.
-
-                  </p>
-
-                )}
-
-
-              {/* OCR CONFIDENCE */}
-
-              {result.confidence &&
-                result.status !==
-                "OCR_FAILED" && (
-
-                  <p className="text-xs text-ink/40 dark:text-mist mt-1 capitalize">
-
-                    OCR confidence:{" "}
-                    {result.confidence.replace(
-                      "_",
-                      " "
-                    )}
-
-                    {result.imageQuality
-                      ? ` · ${result.imageQuality.replace(
-                        /_/g,
-                        " "
-                      )}`
-                      : ""}
-
-                  </p>
-
-                )}
-
-
-              {/* PROVIDER ERROR */}
-
-              {result.status ===
-                "PROVIDER_ERROR" &&
-                result.providerErrorDetail && (
-
-                  <p className="text-xs text-alarm/70 mt-1">
-
-                    Provider detail:{" "}
-                    {
-                      result.providerErrorDetail
-                    }
-
-                  </p>
-
-                )}
-
 
               {/* VALID TRANSACTION */}
 
@@ -1878,6 +1906,9 @@ export default function Verify() {
           </section>
 
         )}
+
+          </div>
+        </div>
 
       </main>
 

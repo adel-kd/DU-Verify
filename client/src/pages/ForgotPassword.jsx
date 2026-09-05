@@ -2,7 +2,8 @@
 //
 // Two-step password reset via email OTP:
 //   1. Enter email -> a reset code is sent
-//   2. Enter code + new password -> password updated
+//   2. Enter code
+//   3. Enter new password -> password updated
 
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -44,12 +45,19 @@ export default function ForgotPassword() {
     try {
       await api.post("/auth/reset-password", { email, otp, newPassword });
 
-      nav("/login", { replace: true });
+      setInfo("Your password was changed successfully. You can now sign in.");
+      setStep(4);
     } catch (err) {
       setError(err.response?.data?.error || "Password reset failed");
     } finally {
       setBusy(false);
     }
+  }
+
+  function continueWithOtp(e) {
+    e.preventDefault();
+    setError("");
+    setStep(3);
   }
 
   return (
@@ -78,11 +86,12 @@ export default function ForgotPassword() {
                 {busy ? "Sending…" : "Send reset code"}
               </button>
             </form>
-          ) : (
-            <form onSubmit={resetPassword} className="space-y-4">
+          ) : step === 2 ? (
+            <form onSubmit={continueWithOtp} className="space-y-4">
               <p className="text-sm text-mist">{info}</p>
               <input
                 inputMode="numeric"
+                autoComplete="one-time-code"
                 maxLength={6}
                 required
                 value={otp}
@@ -90,6 +99,16 @@ export default function ForgotPassword() {
                 placeholder="6-digit code"
                 className="w-full border border-black/20 dark:border-line bg-transparent px-3 py-2.5 text-sm tracking-[0.5em] text-center"
               />
+              <button
+                disabled={busy || otp.length !== 6}
+                className="w-full bg-seal text-white font-semibold py-2.5 disabled:opacity-50"
+              >
+                Continue
+              </button>
+            </form>
+          ) : step === 3 ? (
+            <form onSubmit={resetPassword} className="space-y-4">
+              <p className="text-sm text-mist">Enter your new password.</p>
               <input
                 type="password"
                 required
@@ -106,6 +125,16 @@ export default function ForgotPassword() {
                 {busy ? "Updating…" : "Set new password"}
               </button>
             </form>
+          ) : (
+            <div className="space-y-4">
+              <p className="text-sm text-mist">{info}</p>
+              <button
+                onClick={() => nav("/login", { replace: true })}
+                className="w-full bg-seal text-white font-semibold py-2.5"
+              >
+                Back to sign in
+              </button>
+            </div>
           )}
 
           {error && <p className="text-sm text-alarm">{error}</p>}

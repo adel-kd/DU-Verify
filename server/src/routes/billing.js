@@ -1,6 +1,9 @@
 const express = require("express");
 const crypto = require("crypto");
 const fetch = require("node-fetch");
+const fs = require("fs");
+const path = require("path");
+const multer = require("multer");
 
 const User = require("../models/User");
 const Verification = require("../models/Verification");
@@ -8,15 +11,53 @@ const Topup = require("../models/Topup");
 const Package = require("../models/Package");
 const BillingLedger = require("../models/BillingLedger");
 const PlatformSettings = require("../models/PlatformSettings");
+const PlatformPaymentAccount = require("../models/PlatformPaymentAccount");
 
 const { requireAuth } = require("../middleware/auth");
 const { requireOwner } = require("../middleware/roleCheck");
+const { sendPurchaseReceiptEmail } = require("../services/email");
+const { verifyDirectPayment } = require("../services/directPaymentVerification");
+const { creditBankTransferTopup } = require("../services/billingCredit");
 
 const router = express.Router();
 
 const CHAPA_BASE = "https://api.chapa.co/v1";
 
 const DEFAULT_ETB_PER_CUSTOM_DUPT = 2;
+const RECEIPT_DIR = path.join(__dirname, "../../uploads/bank-transfer-receipts");
+const RECEIPT_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "application/pdf",
+]);
+
+const receiptUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (_req, file, callback) => {
+    if (!RECEIPT_MIME_TYPES.has(file.mimetype)) {
+      return callback(new Error("Receipt must be a JPG, PNG, WebP, or PDF file"));
+    }
+    return callback(null, true);
+  },
+});
+
+function handleReceiptUpload(req, res, next) {
+  receiptUpload.single("receipt")(req, res, (error) => {
+    if (!error) return next();
+    const message =
+      error.code === "LIMIT_FILE_SIZE"
+        ? "Receipt file must be 8 MB or smaller"
+        : error.message || "Could not upload receipt";
+    return res.status(400).json({ error: message });
+  });
+}
+
+// The Chapa callback, webhook, and browser return can arrive together. Keep
+// one confirmation in flight per transaction so they cannot credit a wallet
+// twice before the Topup row is marked successful.
+const pendingConfirmations = new Map();
 
 /* ================================================================
    HELPERS
@@ -99,6 +140,56 @@ function safeSignatureEquals(received, expected) {
   } catch {
     return false;
   }
+}
+
+function receiptExtension(mimeType) {
+  return {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "application/pdf": ".pdf",
+  }[mimeType] || "";
+}
+
+async function resolvePurchase(body, settings) {
+  if (body.mode === "package") {
+    if (!settings.featureFlags.packagePurchaseEnabled) {
+      throw Object.assign(new Error("Package purchases are currently disabled"), { statusCode: 403 });
+    }
+    const pkg = await Package.findOne({ _id: body.packageId, active: true });
+    if (!pkg) {
+      throw Object.assign(new Error("Package not found or unavailable"), { statusCode: 400 });
+    }
+    return {
+      purchaseType: "PACKAGE_PURCHASE",
+      packageId: pkg._id,
+      etbAmount: Number(pkg.priceETB),
+      duptAmount: Number(pkg.duptAmount),
+    };
+  }
+
+  if (body.mode === "custom") {
+    if (!settings.featureFlags.customTopupEnabled) {
+      throw Object.assign(new Error("Custom top-up is currently disabled"), { statusCode: 403 });
+    }
+    const etbAmount = Number(body.amount);
+    if (!Number.isFinite(etbAmount) || etbAmount <= 0) {
+      throw Object.assign(new Error("amount must be a positive number"), { statusCode: 400 });
+    }
+    const rate = Number(settings.customDuptRateEtb) || DEFAULT_ETB_PER_CUSTOM_DUPT;
+    const duptAmount = Math.floor(etbAmount / rate);
+    if (duptAmount < 1) {
+      throw Object.assign(new Error(`Minimum top-up is ETB ${rate}`), { statusCode: 400 });
+    }
+    return {
+      purchaseType: "CUSTOM_TOPUP",
+      packageId: null,
+      etbAmount,
+      duptAmount,
+    };
+  }
+
+  throw Object.assign(new Error("mode must be 'custom' or 'package'"), { statusCode: 400 });
 }
 
 /* ================================================================
@@ -252,6 +343,268 @@ router.get(
 );
 
 /* ================================================================
+   PAYMENT OPTIONS + DIRECT BANK TRANSFER
+================================================================ */
+
+// GET /api/billing/payment-options
+router.get("/payment-options", requireAuth, requireOwner, async (_req, res) => {
+  try {
+    const settings = await PlatformSettings.getOrCreate();
+    const accounts = settings.paymentMethods.bankTransferEnabled
+      ? await PlatformPaymentAccount.find({ enabled: true })
+          .sort({ sortOrder: 1, provider: 1 })
+          .select("provider accountNumber accountHolderName label instructions")
+      : [];
+
+    return res.json({
+      paymentMethods: settings.paymentMethods,
+      accounts,
+    });
+  } catch (error) {
+    console.error("[billing] payment options error:", error);
+    return res.status(500).json({ error: "Could not load payment methods" });
+  }
+});
+
+// GET /api/billing/bank-transfers - the owner's recent receipt submissions.
+router.get("/bank-transfers", requireAuth, requireOwner, async (req, res) => {
+  try {
+    const items = await Topup.find({
+      businessId: req.user._id,
+      paymentMethod: "bank_transfer",
+    })
+      .sort({ createdAt: -1 })
+      .limit(20)
+      .populate("paymentAccountId", "provider label accountNumber accountHolderName")
+      .select(
+        "txRef purchaseType packageId amount duptAmount status bankProvider paymentAccountId reviewReason automaticReview submittedAt completedAt createdAt"
+      );
+
+    return res.json({ items });
+  } catch (error) {
+    console.error("[billing] bank transfer history error:", error);
+    return res.status(500).json({ error: "Could not load bank transfer history" });
+  }
+});
+
+// Authenticated receipt download. Owners may only see their own upload;
+// platform admins can inspect every receipt in the review queue.
+router.get("/bank-transfers/:id/receipt", requireAuth, async (req, res) => {
+  try {
+    const topup = await Topup.findOne({
+      _id: req.params.id,
+      paymentMethod: "bank_transfer",
+    }).select("businessId receipt +receipt.data");
+
+    if (!topup) return res.status(404).json({ error: "Receipt not found" });
+    if (req.user.role !== "admin" && String(topup.businessId) !== String(req.user._id)) {
+      return res.status(403).json({ error: "You cannot view this receipt" });
+    }
+
+    res.type(topup.receipt.mimeType || "application/octet-stream");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Security-Policy", "sandbox");
+    const downloadName = String(topup.receipt.originalName || "receipt")
+      .replace(/[^a-zA-Z0-9._ -]/g, "_")
+      .slice(0, 160);
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${downloadName}"`
+    );
+    if (topup.receipt?.data?.length) {
+      return res.send(topup.receipt.data);
+    }
+
+    // Keep old locally stored receipts readable during migration.
+    const storageName = path.basename(String(topup.receipt?.storageName || ""));
+    if (!storageName) return res.status(404).json({ error: "Receipt file not found" });
+    const filePath = path.join(RECEIPT_DIR, storageName);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: "Receipt file not found" });
+    return res.sendFile(filePath);
+  } catch (error) {
+    console.error("[billing] receipt download error:", error);
+    return res.status(500).json({ error: "Could not load receipt" });
+  }
+});
+
+// POST /api/billing/bank-transfer
+router.post(
+  "/bank-transfer",
+  requireAuth,
+  requireOwner,
+  handleReceiptUpload,
+  async (req, res) => {
+    let topup = null;
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "A receipt screenshot or PDF is required" });
+      }
+
+      const settings = await PlatformSettings.getOrCreate();
+      if (!settings.paymentMethods.bankTransferEnabled) {
+        return res.status(403).json({ error: "Direct bank transfer is currently disabled" });
+      }
+
+      const purchase = await resolvePurchase(req.body, settings);
+      const paymentAccount = await PlatformPaymentAccount.findOne({
+        _id: req.body.paymentAccountId,
+        enabled: true,
+      });
+      if (!paymentAccount) {
+        return res.status(400).json({ error: "Choose an available payment account" });
+      }
+
+      const txRef = `bank-${req.user._id}-${Date.now()}-${crypto
+        .randomBytes(3)
+        .toString("hex")}`;
+      const storageName = `${crypto.randomUUID()}${receiptExtension(req.file.mimetype)}`;
+
+      topup = await Topup.create({
+        businessId: req.user._id,
+        txRef,
+        purchaseType: purchase.purchaseType,
+        packageId: purchase.packageId,
+        amount: purchase.etbAmount,
+        duptAmount: purchase.duptAmount,
+        paymentMethod: "bank_transfer",
+        status: "processing",
+        paymentAccountId: paymentAccount._id,
+        bankProvider: paymentAccount.provider,
+        submittedAt: new Date(),
+        receipt: {
+          storageName,
+          originalName: path.basename(req.file.originalname || "receipt"),
+          mimeType: req.file.mimetype,
+          size: req.file.size,
+          data: req.file.buffer,
+        },
+      });
+
+      let review;
+      try {
+        if (settings.providerEnabled?.[paymentAccount.provider] === false) {
+          review = {
+            automaticApproved: false,
+            pendingReason: `${paymentAccount.provider} automatic verification is currently disabled.`,
+            reference: null,
+            extractedAmount: null,
+            senderName: null,
+            receiverName: null,
+            receiverAccount: null,
+            checks: { providerStatus: "DISABLED", providerReason: "Platform provider disabled" },
+          };
+        } else {
+          review = await verifyDirectPayment({
+            file: req.file,
+            account: paymentAccount,
+            expectedAmount: purchase.etbAmount,
+          });
+        }
+      } catch (error) {
+        review = {
+          automaticApproved: false,
+          pendingReason: "Automatic verification could not finish. An admin will review the receipt.",
+          reference: null,
+          extractedAmount: null,
+          senderName: null,
+          receiverName: null,
+          receiverAccount: null,
+          checks: { providerStatus: "ERROR", providerReason: error.message },
+        };
+      }
+
+      if (review.reference) {
+        const duplicate = await Topup.findOne({
+          _id: { $ne: topup._id },
+          paymentMethod: "bank_transfer",
+          bankProvider: paymentAccount.provider,
+          extractedReference: review.reference,
+          status: { $in: ["processing", "pending_review", "crediting", "success"] },
+        }).select("_id status");
+
+        if (duplicate) {
+          review.automaticApproved = false;
+          review.pendingReason = "This transaction reference was already submitted. An admin will review it.";
+          review.checks = { ...review.checks, duplicateReference: true };
+        }
+      }
+
+      await Topup.updateOne(
+        { _id: topup._id },
+        {
+          $set: {
+            extractedReference: review.reference,
+            extractedAmount: review.extractedAmount,
+            extractedSenderName: review.senderName,
+            verifiedReceiverName: review.receiverName,
+            verifiedReceiverAccount: review.receiverAccount,
+            automaticReview: review.checks,
+            reviewReason: review.pendingReason,
+          },
+        }
+      );
+
+      if (review.automaticApproved) {
+        try {
+          const credited = await creditBankTransferTopup(topup._id, {
+            reason: "Automatically verified direct bank transfer",
+          });
+          return res.status(201).json({
+            status: "success",
+            txRef,
+            duptBalance: credited.duptBalance,
+            duptCredited: purchase.duptAmount,
+            userMessage: "Payment verified. Your DU PT balance has been credited.",
+          });
+        } catch (error) {
+          review.pendingReason =
+            error.statusCode === 409
+              ? error.message
+              : "The receipt passed verification, but crediting needs admin review.";
+        }
+      }
+
+      await Topup.updateOne(
+        { _id: topup._id, status: { $in: ["processing", "crediting"] } },
+        {
+          $set: {
+            status: "pending_review",
+            reviewReason: review.pendingReason,
+          },
+          $unset: { creditedReference: 1 },
+        }
+      );
+
+      return res.status(202).json({
+        status: "pending_review",
+        txRef,
+        userMessage: "Receipt submitted. Please wait for an admin to approve your payment.",
+        reviewReason: review.pendingReason,
+      });
+    } catch (error) {
+      console.error("[billing] direct bank transfer error:", error);
+      if (topup?._id) {
+        const fallback = await Topup.updateOne(
+          { _id: topup._id, status: "processing" },
+          { $set: { status: "pending_review", reviewReason: error.message } }
+        ).catch(() => null);
+        if (fallback?.modifiedCount) {
+          return res.status(202).json({
+            status: "pending_review",
+            txRef: topup.txRef,
+            userMessage: "Receipt submitted. Please wait for an admin to approve your payment.",
+            reviewReason: "Automatic verification could not finish.",
+          });
+        }
+      }
+      return res.status(error.statusCode || 500).json({
+        error: error.statusCode ? error.message : "Could not submit this bank transfer",
+      });
+    }
+  }
+);
+
+/* ================================================================
    INITIALIZE CHAPA TOPUP
 ================================================================ */
 
@@ -274,6 +627,12 @@ router.post(
 
       const settings =
         await PlatformSettings.getOrCreate();
+
+      if (!settings.paymentMethods.chapaEnabled) {
+        return res.status(403).json({
+          error: "Chapa payments are currently disabled",
+        });
+      }
 
       let purchaseType;
       let etbAmount;
@@ -479,6 +838,9 @@ router.post(
 
         status:
           "pending",
+
+        paymentMethod:
+          "chapa",
       });
 
       /* ------------------------------------------------------------
@@ -656,6 +1018,20 @@ router.post(
  * when the ledger entry is created.
  */
 async function confirmAndCredit(txRef) {
+  const activeConfirmation = pendingConfirmations.get(txRef);
+  if (activeConfirmation) return activeConfirmation;
+
+  const confirmation = confirmAndCreditOnce(txRef);
+  pendingConfirmations.set(txRef, confirmation);
+
+  try {
+    return await confirmation;
+  } finally {
+    pendingConfirmations.delete(txRef);
+  }
+}
+
+async function confirmAndCreditOnce(txRef) {
   console.log(
     `[chapa] confirmAndCredit START tx_ref=${txRef}`
   );
@@ -1300,6 +1676,52 @@ async function confirmAndCredit(txRef) {
   }
 
   /* --------------------------------------------------------------
+     SEND RECEIPT EMAIL TO CLIENT ADMIN
+  --------------------------------------------------------------- */
+
+  try {
+    let clientAdmin = business;
+    if (business.role === "staff" && business.businessId) {
+      const owner = await User.findById(business.businessId);
+      if (owner) clientAdmin = owner;
+    }
+
+    if (
+      clientAdmin &&
+      clientAdmin.email &&
+      clientAdmin.notificationPreferences?.emailReceipts !== false
+    ) {
+      let description =
+        freshTopup.purchaseType === "PACKAGE_PURCHASE"
+          ? "Discounted Package Purchase"
+          : "Custom DU PT Top Up";
+
+      if (freshTopup.packageId) {
+        const pkg = await Package.findById(freshTopup.packageId);
+        if (pkg?.name) description = `Package Purchase: ${pkg.name}`;
+      }
+
+      sendPurchaseReceiptEmail(clientAdmin.email, {
+        ownerName: clientAdmin.ownerName,
+        businessName: clientAdmin.businessName,
+        txRef,
+        purchaseType: description,
+        etbAmount: freshTopup.amount,
+        duptCredited: duptToCredit,
+        newBalance: balanceAfter,
+        date: new Date(),
+      }).catch((emailErr) => {
+        console.error(
+          `[billing] Failed to send receipt email to ${clientAdmin.email}:`,
+          emailErr
+        );
+      });
+    }
+  } catch (emailTriggerErr) {
+    console.error("[billing] Error preparing receipt email:", emailTriggerErr);
+  }
+
+  /* --------------------------------------------------------------
      FINAL
   --------------------------------------------------------------- */
 
@@ -1372,6 +1794,37 @@ router.get(
     }
   }
 );
+
+// Chapa can redirect the browser before its callback/webhook reaches us.
+// Confirm from the authenticated return page so wallet credit and the receipt
+// email do not rely on that asynchronous delivery path.
+router.post("/confirm/:tx_ref", requireAuth, requireOwner, async (req, res) => {
+  const txRef = String(req.params.tx_ref || "").trim();
+  try {
+    const topup = await Topup.findOne({ txRef, businessId: req.user._id });
+    if (!topup) {
+      return res.status(404).json({ error: "Top-up not found" });
+    }
+
+    const result = await confirmAndCredit(txRef);
+    if (!result.ok) {
+      return res.status(409).json({
+        error: "Payment has not been confirmed yet",
+        reason: result.reason,
+      });
+    }
+
+    const business = await User.findById(req.user._id).select("duptBalance");
+    return res.json({
+      status: "success",
+      alreadyProcessed: Boolean(result.alreadyProcessed),
+      duptBalance: business?.duptBalance ?? 0,
+    });
+  } catch (err) {
+    console.error(`[billing] /confirm error tx_ref=${txRef}:`, err);
+    return res.status(502).json({ error: "Could not confirm payment yet" });
+  }
+});
 
 /* ================================================================
    CHAPA WEBHOOK

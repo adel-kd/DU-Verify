@@ -64,12 +64,11 @@ export default function TopBar({ dark = true }) {
   return (
     <header
       className={
-        "sticky top-0 z-10 px-4 sm:px-5 py-3 " +
-        "flex items-center justify-between gap-2 " +
-        "border-b border-white/5 " +
+        "sticky top-0 z-40 border-b px-4 py-3 backdrop-blur-xl sm:px-6 " +
+        "flex items-center justify-between gap-3 " +
         (dark
-          ? "bg-ink text-paper"
-          : "bg-panel text-paper")
+          ? "border-white/10 bg-[#13201b]/95 text-paper shadow-[0_8px_30px_-20px_rgba(0,0,0,0.8)]"
+          : "border-black/10 bg-white/90 text-ink")
       }
     >
       {/* ======================================================
@@ -78,17 +77,17 @@ export default function TopBar({ dark = true }) {
 
       <Link
         to={homePath}
-        className="flex items-center gap-2 min-w-0"
+        className="group flex min-w-0 items-center gap-2.5"
       >
         {/* Logo */}
         <img
           src={logoSmall}
           alt="DU Verify"
-          className="h-8 w-8 shrink-0"
+          className="h-9 w-9 shrink-0 transition-transform duration-300 group-hover:scale-105"
         />
 
         {/* App name */}
-        <span className="font-display font-bold tracking-tight whitespace-nowrap">
+        <span className="font-display text-[15px] font-bold tracking-[-0.02em] whitespace-nowrap">
           DU Verify
         </span>
 
@@ -134,7 +133,7 @@ export default function TopBar({ dark = true }) {
 
         {!isAdmin &&
           duptBalance !== undefined && (
-            <span className="bg-seal/15 text-seal border border-seal/40 rounded-full px-2.5 sm:px-3 py-1 font-medium whitespace-nowrap">
+          <span className="rounded-full border border-seal/30 bg-seal/10 px-2.5 py-1 font-semibold tabular-nums text-seal sm:px-3 whitespace-nowrap">
               {Number(duptBalance || 0).toLocaleString()} DU PT
             </span>
           )}

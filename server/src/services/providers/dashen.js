@@ -20,6 +20,13 @@ const fetch = require("node-fetch");
 const https = require("https");
 const pdfParse = require("pdf-parse");
 
+const {
+  RESULT,
+  classifyNetworkError,
+  unavailable,
+  rejected,
+} = require("../providerStatus");
+
 const insecureAgent = new https.Agent({
   rejectUnauthorized: false,
 });
@@ -325,6 +332,19 @@ async function verifyDashen(reference) {
     return {
       httpOk: false,
       status: 400,
+
+      // Local input validation — the provider was never contacted,
+      // so this must NOT be NOT_VERIFIED.
+      classification: {
+        status: "INVALID_FORMAT",
+
+        reason: "MISSING_REFERENCE",
+
+        provider: "Dashen",
+
+        retryable: false,
+      },
+
       body: {
         success: false,
         error:
@@ -339,6 +359,19 @@ async function verifyDashen(reference) {
     return {
       httpOk: false,
       status: 400,
+
+      // Local input validation — the provider was never contacted,
+      // so this must NOT be NOT_VERIFIED.
+      classification: {
+        status: "INVALID_FORMAT",
+
+        reason: "INVALID_REFERENCE",
+
+        provider: "Dashen",
+
+        retryable: false,
+      },
+
       body: {
         success: false,
         error:
@@ -408,9 +441,26 @@ async function verifyDashen(reference) {
 
       if (!res.ok) {
         if (res.status === 404) {
+          // Dashen's application responded and did not find
+          // this receipt. This is a definitive business-level
+          // rejection => NOT_VERIFIED.
+          console.log(
+            "[dashen] provider response: 404"
+          );
+
+          console.log(
+            "[dashen] classification: NOT_VERIFIED"
+          );
+
           return {
             httpOk: false,
             status: 404,
+
+            classification: rejected(
+              "Dashen",
+              "RECEIPT_NOT_FOUND"
+            ),
+
             body: {
               success: false,
               error:
@@ -419,32 +469,67 @@ async function verifyDashen(reference) {
           };
         }
 
-        // Retry temporary Dashen server errors.
-
+        // 408/429/5xx are infrastructure failures.
         if (
-          (
-            res.status === 500 ||
-            res.status === 502 ||
-            res.status === 503 ||
-            res.status === 504
-          ) &&
-          attempt < maxRetries
+          res.status === 429 ||
+          res.status === 500 ||
+          res.status === 502 ||
+          res.status === 503 ||
+          res.status === 504 ||
+          res.status === 408
         ) {
+          if (attempt < maxRetries) {
+            // Respect rate limiting with a conservative backoff.
+            const delay =
+              res.status === 429 ? 3000 : 1500;
+
+            console.log(
+              `[dashen] temporary HTTP ${res.status}; ` +
+              `retrying (${attempt}/${maxRetries})`
+            );
+
+            await new Promise(
+              (resolve) => setTimeout(resolve, delay)
+            );
+
+            continue;
+          }
+
           console.log(
-            `[dashen] temporary HTTP ${res.status}; ` +
-            `retrying (${attempt}/${maxRetries})`
+            `[dashen] classification: PROVIDER_UNAVAILABLE (HTTP ${res.status})`
           );
 
-          await new Promise(
-            (resolve) => setTimeout(resolve, 1500)
-          );
+          return {
+            httpOk: false,
+            status: res.status,
 
-          continue;
+            classification: unavailable(
+              "Dashen",
+              `HTTP_${res.status}`
+            ),
+
+            body: {
+              success: false,
+              error:
+                `Dashen returned HTTP ${res.status}`,
+            },
+          };
         }
+
+        // Any other unexpected HTTP status fails safe.
+        console.log(
+          `[dashen] classification: PROVIDER_UNAVAILABLE (unclassified HTTP ${res.status})`
+        );
 
         return {
           httpOk: false,
           status: res.status,
+
+          classification: unavailable(
+            "Dashen",
+            `HTTP_${res.status}_UNCLASSIFIED`
+          ),
+
           body: {
             success: false,
             error:
@@ -467,13 +552,138 @@ async function verifyDashen(reference) {
       const buffer = await res.buffer();
 
       if (!buffer || buffer.length === 0) {
+        console.log(
+          "[dashen] classification: PROVIDER_UNAVAILABLE (empty response)"
+        );
+
         return {
           httpOk: false,
           status: 422,
+
+          classification: unavailable(
+            "Dashen",
+            "EMPTY_RESPONSE"
+          ),
+
           body: {
             success: false,
             error:
               "Dashen returned an empty receipt.",
+          },
+        };
+      }
+
+      // -------------------------------------------------------
+      // Inspect non-PDF bodies BEFORE attempting to parse.
+      //
+      // A provider can return HTTP 200 while the body contains
+      // an application-level or infrastructure-level error.
+      // -------------------------------------------------------
+
+      const bodyText = buffer
+        .slice(0, 4096)
+        .toString("utf8")
+        .trim();
+
+      const looksLikePdf =
+        buffer.slice(0, 5).toString("utf8") === "%PDF-" ||
+        contentType.includes("application/pdf");
+
+      if (!looksLikePdf) {
+        // CASE B (infrastructure): Dashen storage errors such as:
+        //
+        // <Error><Code>SlowDownRead</Code>
+        // <Message>Resource requested is unreadable, please reduce your request rate</Message>
+        // </Error>
+        //
+        // This is NOT a transaction-invalid response.
+        if (
+          /SlowDownRead|SlowDown|InternalError|ServiceUnavailable|<Error>/i.test(
+            bodyText
+          )
+        ) {
+          console.error(
+            "[dashen] infrastructure error response detected:",
+            bodyText.slice(0, 200)
+          );
+
+          console.log(
+            "[dashen] classification: PROVIDER_UNAVAILABLE"
+          );
+
+          return {
+            httpOk: false,
+            status: 503,
+
+            classification: unavailable(
+              "Dashen",
+              "INFRASTRUCTURE_ERROR"
+            ),
+
+            body: {
+              success: false,
+              error:
+                "Dashen receipt infrastructure is temporarily unavailable. Please try again shortly.",
+            },
+          };
+        }
+
+        // CASE A (business rejection): Dashen's application-level
+        // invalid-request response, e.g. "This request is not correct".
+        // Only this confirmed app-level message classifies as NOT_VERIFIED.
+        if (
+          /this\s+request\s+is\s+not\s+correct/i.test(
+            bodyText
+          )
+        ) {
+          console.log(
+            "[dashen] body matched known invalid response"
+          );
+
+          console.log(
+            "[dashen] classification: NOT_VERIFIED"
+          );
+
+          return {
+            httpOk: false,
+            status: 422,
+
+            classification: rejected(
+              "Dashen",
+              "PROVIDER_REJECTED"
+            ),
+
+            body: {
+              success: false,
+              error:
+                "The payment provider responded, but this transaction could not be confirmed.",
+            },
+          };
+        }
+
+        // Unknown HTML/error page — FAIL SAFE, never accuse.
+        console.error(
+          "[dashen] unexpected non-PDF response:",
+          bodyText.slice(0, 200)
+        );
+
+        console.log(
+          "[dashen] classification: PROVIDER_UNAVAILABLE (unknown response)"
+        );
+
+        return {
+          httpOk: false,
+          status: 422,
+
+          classification: unavailable(
+            "Dashen",
+            "UNKNOWN_RESPONSE"
+          ),
+
+          body: {
+            success: false,
+            error:
+              "Could not read the Dashen receipt. Please try again.",
           },
         };
       }
@@ -492,9 +702,19 @@ async function verifyDashen(reference) {
           pdfError.message
         );
 
+        console.log(
+          "[dashen] classification: PROVIDER_UNAVAILABLE (PDF parse failure)"
+        );
+
         return {
           httpOk: false,
           status: 422,
+
+          classification: unavailable(
+            "Dashen",
+            "PDF_PARSE_FAILED"
+          ),
+
           body: {
             success: false,
             error:
@@ -549,9 +769,19 @@ async function verifyDashen(reference) {
           data.text
         );
 
+        console.log(
+          "[dashen] classification: PROVIDER_UNAVAILABLE (receipt fields unreadable)"
+        );
+
         return {
           httpOk: false,
           status: 422,
+
+          classification: unavailable(
+            "Dashen",
+            "RECEIPT_FIELDS_UNREADABLE"
+          ),
+
           body: {
             success: false,
             error:
@@ -579,9 +809,19 @@ async function verifyDashen(reference) {
           }
         );
 
+        console.log(
+          "[dashen] classification: NOT_VERIFIED (returned receipt is a different transaction)"
+        );
+
         return {
           httpOk: false,
           status: 422,
+
+          classification: rejected(
+            "Dashen",
+            "RECEIPT_REFERENCE_MISMATCH"
+          ),
+
           body: {
             success: false,
             error:
@@ -657,21 +897,48 @@ async function verifyDashen(reference) {
         }
       );
 
+      console.log(
+        "[dashen] receipt parsed successfully"
+      );
+
+      console.log(
+        "[dashen] classification: VALID"
+      );
+
       return {
         httpOk: true,
         status: 200,
+
+        classification: {
+          status: RESULT.VALID,
+
+          provider: "Dashen",
+
+          retryable: false,
+        },
+
         body,
       };
     } catch (err) {
+      const failure =
+        classifyNetworkError(err, "Dashen");
+
       console.error(
         `[dashen] attempt ${attempt}/${maxRetries} failed:`,
         err.message
       );
 
       if (attempt === maxRetries) {
+        console.log(
+          "[dashen] classification: PROVIDER_UNAVAILABLE"
+        );
+
         return {
           httpOk: false,
           status: 502,
+
+          classification: failure,
+
           body: {
             success: false,
             error:

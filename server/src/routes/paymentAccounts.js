@@ -12,12 +12,15 @@ router.use(requireAuth);
 ============================================================ */
 
 // Resolves the business id a request is scoped to,
-// regardless of whether the caller is the owner themselves
-// or one of their staff.
+// regardless of whether the caller is the owner themselves,
+// one of their staff, or an admin acting on behalf of a
+// business (passes ?businessId=... / body.businessId).
 function businessIdFor(req) {
-  return req.user.role === "owner"
-    ? req.user._id
-    : req.user.businessId;
+  if (req.user.role === "owner") return req.user._id;
+  if (req.user.role === "admin") {
+    return req.query.businessId || req.body?.businessId || null;
+  }
+  return req.user.businessId;
 }
 
 /* ============================================================
@@ -236,6 +239,10 @@ function paymentReceiverMatches({
 // Staff:
 //   sees only enabled accounts.
 //
+// Admin (acting on behalf of a business, via ?businessId=):
+//   sees every account, same as the owner would - they need
+//   the full picture to run a check for that client.
+//
 // Disabled accounts are never returned to staff.
 router.get("/", async (req, res) => {
   try {
@@ -244,11 +251,13 @@ router.get("/", async (req, res) => {
     if (!businessId) {
       return res.status(400).json({
         error:
-          "No business context for this account",
+          req.user.role === "admin"
+            ? "businessId is required"
+            : "No business context for this account",
       });
     }
 
-    if (req.user.role === "owner") {
+    if (req.user.role === "owner" || req.user.role === "admin") {
       const accounts =
         await PaymentAccount.find({
           businessId,
