@@ -2,14 +2,18 @@ import axios from "axios";
 
 const configuredApiUrl = import.meta.env.VITE_API_URL;
 const localApiUrl = "http://localhost:5000";
-const remoteApiUrls = [
-  configuredApiUrl,
-  "https://gory-starry-undercoat.ngrok-free.dev",
-];
 
 const isLocalFrontend = ["localhost", "127.0.0.1"].includes(
   window.location.hostname
 );
+
+const remoteApiUrls = [
+  // Production requests stay on the trusted frontend origin and are
+  // reverse-proxied to Render by Vercel. Direct endpoints remain fallbacks.
+  isLocalFrontend ? null : window.location.origin,
+  configuredApiUrl,
+  "https://gory-starry-undercoat.ngrok-free.dev",
+];
 
 const baseURLs = [
   ...(isLocalFrontend ? [localApiUrl, ...remoteApiUrls] : [...remoteApiUrls, localApiUrl]),

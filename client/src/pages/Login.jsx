@@ -18,8 +18,8 @@ async function findGoogleAuthBackend() {
     const controller = new AbortController();
     const hostname = new URL(baseURL).hostname;
     const isLocal = hostname === "localhost" || hostname === "127.0.0.1";
-    // Render free services can be asleep. Give the public API enough time to
-    // wake while keeping a failed localhost probe quick.
+    // The same-origin Vercel proxy is tried first in production. Render and
+    // ngrok remain available when that route is genuinely unavailable.
     const timeout = window.setTimeout(() => controller.abort(), isLocal ? 2500 : 70_000);
 
     try {
