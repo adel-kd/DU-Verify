@@ -25,7 +25,10 @@
 
 const fetch = require("node-fetch");
 
-const GEMINI_MODEL = "gemini-2.5-flash";
+// Flash-Lite is enough for structured receipt extraction and costs less for
+// high-volume Ethiopian receipt verification. Set GEMINI_MODEL to the full
+// Flash model when a deployment needs the higher OCR quality.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
 
 const GEMINI_URL = (key) =>
   `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`;
