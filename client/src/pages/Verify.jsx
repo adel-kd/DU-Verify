@@ -1610,9 +1610,9 @@ export default function Verify() {
                 </span>
 
                 <span className="font-semibold text-ink dark:text-white">
-                  Tap to upload a receipt
+                  Add from device
                 </span>
-                <span className="text-xs text-ink/40 dark:text-white/40">Keep all four corners visible</span>
+                <span className="text-xs text-ink/40 dark:text-white/40">Choose a photo or screenshot</span>
               </>
 
             )}
@@ -1624,9 +1624,9 @@ export default function Verify() {
             ref={fileInput}
             type="file"
             accept="image/*"
-            capture="environment"
             onChange={onPickFile}
             className="hidden"
+            aria-label="Add a receipt image from this device"
           />
 
 

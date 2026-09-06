@@ -7,6 +7,7 @@ import Footer from "../components/Footer.jsx";
 import Modal from "../components/Modal.jsx";
 import Toast from "../components/Toast.jsx";
 import ProviderBadge from "../components/ProviderBadge.jsx";
+import CameraCapture from "../components/CameraCapture.jsx";
 import { refreshPlatformContent } from "../hooks/usePlatformContent.js";
 
 const SECTIONS = [
@@ -1025,6 +1026,14 @@ export default function AdminDashboard() {
                         onChange={(e) => setVerifyFile(e.target.files?.[0] || null)}
                         className="w-full text-xs border border-black/10 dark:border-line rounded-lg px-3 py-2"
                       />
+                      <div className="mt-2">
+                        <CameraCapture onCapture={setVerifyFile} />
+                      </div>
+                      {verifyFile && (
+                        <p className="mt-2 truncate text-xs text-ink/50 dark:text-mist" aria-live="polite">
+                          Selected: {verifyFile.name}
+                        </p>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
