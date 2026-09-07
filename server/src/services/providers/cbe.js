@@ -1140,7 +1140,7 @@ async function verifyCBE(
       body: {
         success: false,
         error:
-          "A CBE receipt link or transaction reference is required.",
+        "A complete CBE mobile-banking receipt link is required.",
       },
     };
   }
@@ -1159,7 +1159,7 @@ async function verifyCBE(
       body: {
         success: false,
         error:
-          "A CBE receipt link or transaction reference is required.",
+        "A complete CBE mobile-banking receipt link is required.",
       },
     };
   }
@@ -1188,40 +1188,8 @@ async function verifyCBE(
   }
 
 
-  // ==========================================================
-  // LEGACY FT
-  // ==========================================================
-
-  const ref =
-    input
-      .replace(
-        /\s+/g,
-        ""
-      )
-      .toUpperCase();
-
-
-  if (
-    LEGACY_CBE_REFERENCE_REGEX.test(
-      ref
-    )
-  ) {
-
-    console.log(
-      "[cbe] detected LEGACY receipt:",
-      ref
-    );
-
-    return verifyCBELegacy(
-      ref,
-      accountSuffix
-    );
-  }
-
-
-  // ==========================================================
-  // UNKNOWN
-  // ==========================================================
+  // CBE's current receipt service verifies tokenized mobile-banking links.
+  // Do not silently route old FT references to the retired PDF endpoint.
 
   return {
     httpOk: false,
@@ -1230,7 +1198,7 @@ async function verifyCBE(
     body: {
       success: false,
       error:
-        "CBE reference must be either a mbreciept.cbe.com.et receipt link/token or a legacy FT reference.",
+        "CBE requires the complete https://mbreciept.cbe.com.et/<token> receipt link.",
     },
   };
 }

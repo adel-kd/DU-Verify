@@ -12,7 +12,7 @@ let providerStatus = 'VALID';
 let providerCalls = 0;
 const providerPath = require.resolve('../src/services/veritas');
 require.cache[providerPath] = { id: providerPath, filename: providerPath, loaded: true, exports: {
-  verifyReceipt: async () => { providerCalls++; await new Promise(r => setTimeout(r, 30)); return { classification: { status: providerStatus }, body: { success: providerStatus === 'VALID', amount: 100 } }; },
+  verifyReceipt: async () => { providerCalls++; await new Promise(r => setTimeout(r, 30)); return { classification: { status: providerStatus }, body: { success: providerStatus === 'VALID', amount: 100, receiver_account: '100012345678', receiver_name: 'DU Verifay' } }; },
 } };
 const User = require('../src/models/User');
 const Developer = require('../src/models/Developer');
@@ -57,23 +57,30 @@ async function main() {
   assert.equal((await call('/v1/verify', secret, payload)).status, 400);
   const first = await call('/v1/verify', secret, payload, 'POST', 'test_order_1');
   assert.equal(first.status, 200); assert.equal(first.data.charged, 1);
+  assert.ok(first.data.receipt, 'requests without merchant checks return receipt details');
   assert.equal((await call('/v1/verify', secret, payload, 'POST', 'test_order_1')).data.requestId, first.data.requestId);
   assert.equal(providerCalls, 1);
   assert.equal((await call('/v1/verify', secret, { ...payload, reference: 'DIFFERENT' }, 'POST', 'test_order_1')).status, 409);
   assert.equal((await User.findById(owner._id)).duptBalance, 4);
+  const matched = await call('/v1/verify', secret, { provider: 'Telebirr', reference: 'MATCH12345', expectedAmount: 100, receiverAccountNumber: '1000 1234 5678', receiverAccountHolderName: 'DU Verifay' }, 'POST', 'test_match_1');
+  assert.equal(matched.data.status, 'VALID'); assert.equal(matched.data.verification.badge, 'green'); assert.equal(matched.data.receipt, undefined);
+  const duplicate = await call('/v1/verify', secret, { provider: 'Telebirr', reference: 'MATCH12345' }, 'POST', 'test_duplicate_1');
+  assert.equal(duplicate.data.status, 'ALREADY_USED'); assert.equal(duplicate.data.charged, 0);
+  assert.equal((await User.findById(owner._id)).duptBalance, 3);
   providerStatus = 'PROVIDER_UNAVAILABLE';
-  assert.equal((await call('/v1/verify', secret, payload, 'POST', 'test_outage_1')).data.charged, 0);
-  assert.equal((await User.findById(owner._id)).duptBalance, 4);
+  assert.equal((await call('/v1/verify', secret, { ...payload, reference: 'OUTAGE12345' }, 'POST', 'test_outage_1')).data.charged, 0);
+  assert.equal((await User.findById(owner._id)).duptBalance, 3);
   providerStatus = 'VALID';
-  const concurrent = await Promise.all([call('/v1/verify', secret, payload, 'POST', 'test_concurrent_1'), call('/v1/verify', secret, payload, 'POST', 'test_concurrent_1')]);
+  const concurrentPayload = { ...payload, reference: 'CONCURRENT12345' };
+  const concurrent = await Promise.all([call('/v1/verify', secret, concurrentPayload, 'POST', 'test_concurrent_1'), call('/v1/verify', secret, concurrentPayload, 'POST', 'test_concurrent_1')]);
   assert(concurrent.some(r => r.status === 200));
   assert.equal(await Request.countDocuments({ userId: owner._id, idempotencyKey: 'test_concurrent_1' }), 1);
-  assert.equal((await User.findById(owner._id)).duptBalance, 3);
+  assert.equal((await User.findById(owner._id)).duptBalance, 2);
   assert.equal((await call(`/admin/accounts/${owner._id}/balance`, token(admin), { amount: 10, reason: 'Test credit' })).status, 200);
-  assert.equal((await User.findById(owner._id)).duptBalance, 13);
+  assert.equal((await User.findById(owner._id)).duptBalance, 12);
   assert.equal((await call(`/admin/accounts/${owner._id}/balance`, token(admin), { amount: -99, reason: 'Test debit' })).status, 400);
   await User.updateOne({ _id: owner._id }, { $set: { duptBalance: 1 } });
-  await Promise.all([call('/v1/verify', secret, payload, 'POST', 'last_credit_1'), call('/v1/verify', secret, payload, 'POST', 'last_credit_2')]);
+  await Promise.all([call('/v1/verify', secret, { ...payload, reference: 'LASTCREDIT1' }, 'POST', 'last_credit_1'), call('/v1/verify', secret, { ...payload, reference: 'LASTCREDIT2' }, 'POST', 'last_credit_2')]);
   assert.equal((await User.findById(owner._id)).duptBalance, 0);
   assert.equal((await call('/v1/verify', secret, payload, 'POST', 'empty_balance_1')).status, 402);
   assert.equal((await call(`/admin/accounts/${owner._id}`, token(admin), { enabled: false, reason: 'Test suspension' }, 'PATCH')).status, 200);
@@ -81,7 +88,7 @@ async function main() {
   await call(`/admin/accounts/${owner._id}`, token(admin), { enabled: true, reason: 'Test reactivation' }, 'PATCH');
   await call(`/keys/${created.data.id}`, token(owner), undefined, 'DELETE');
   assert.equal((await call('/v1/balance', secret, undefined, 'GET')).status, 401);
-  console.log('PASS: enrollment, hashed keys, tenant isolation, admin authorization, billing, replay, concurrency, insufficient funds, outage, suspension, revocation');
+  console.log('PASS: enrollment, hashed keys, tenant isolation, receiver matching, duplicate receipt protection, billing, replay, concurrency, insufficient funds, outage, suspension, revocation');
 }
 main().catch(e => { console.error(e.message); process.exitCode = 1; }).finally(async () => {
   if (server) await new Promise(r => server.close(r));

@@ -375,7 +375,7 @@ export default function Login() {
                     value={businessType}
                     onChange={(e) => setBusinessType(e.target.value)}
                     required
-                    className={`w-full appearance-none bg-[#121212] border border-[#222] rounded-lg pl-3 pr-10 py-2.5 text-sm focus:outline-none focus:border-seal cursor-pointer transition-colors duration-200 ${
+                    className={`select-with-icon w-full appearance-none bg-[#121212] border border-[#222] rounded-lg pl-3 pr-10 py-2.5 text-sm focus:outline-none focus:border-seal cursor-pointer transition-colors duration-200 ${
                       businessType === "" ? "text-mist" : "text-white"
                     }`}
                   >

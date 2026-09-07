@@ -112,7 +112,10 @@ const OCR_FAILURE_COPY = {
     "This does not look like a payment receipt or USSD confirmation.",
 
   CBE_USSD_NOT_ACCEPTED:
-    "CBE USSD results are not accepted.",
+    "CBE USSD results are not accepted. Use a mobile-banking receipt with a QR code or paste its complete receipt link.",
+
+  CBE_LINK_REQUIRED:
+    "CBE needs the complete mobile-banking receipt link. Scan the QR code or paste the link manually.",
 
   TOO_BLURRY:
     "The image is too blurry to read the reference number. Please retake the photo.",
@@ -324,23 +327,14 @@ function getTransactionTime(result) {
  * It does not extract or modify the token.
  */
 function isCBEReceiptPayload(value) {
-  if (!value) {
+  try {
+    const url = new URL(String(value || "").trim());
+    return url.protocol === "https:" &&
+      url.hostname.toLowerCase() === "mbreciept.cbe.com.et" &&
+      /^\/[A-Za-z0-9][A-Za-z0-9-]{5,100}$/.test(url.pathname);
+  } catch {
     return false;
   }
-
-  const normalized =
-    String(value)
-      .trim()
-      .toLowerCase();
-
-  return (
-    normalized.includes(
-      "mbreciept.cbe.com.et"
-    ) ||
-    normalized.includes(
-      "mb.cbe.com.et"
-    )
-  );
 }
 
 
@@ -1490,7 +1484,7 @@ export default function Verify() {
 
                 <ScanLine className="mt-0.5 shrink-0 text-seal" size={16} aria-hidden="true" />
 
-                <span>CBE receipt QR codes are detected automatically when you upload a receipt image.</span>
+                <span>For CBE, only a mobile-banking receipt QR that contains the official receipt link can be verified. USSD screenshots and old reference numbers are not accepted.</span>
 
               </p>
 
@@ -1582,7 +1576,7 @@ export default function Verify() {
           <span className="field-label">03 / Receipt</span>
           <div className="mt-1.5 flex items-baseline justify-between gap-3">
             <h2 className="font-display text-lg font-semibold tracking-tight text-ink dark:text-white">Add the payment receipt</h2>
-            <span className="text-xs text-ink/40 dark:text-white/40">Photo or screenshot</span>
+            <span className="text-xs text-ink/40 dark:text-white/40">{bank === "CBE" ? "Mobile-banking receipt QR" : "Photo or screenshot"}</span>
           </div>
 
 
@@ -1612,7 +1606,7 @@ export default function Verify() {
                 <span className="font-semibold text-ink dark:text-white">
                   Add from device
                 </span>
-                <span className="text-xs text-ink/40 dark:text-white/40">Choose a photo or screenshot</span>
+                <span className="text-xs text-ink/40 dark:text-white/40">{bank === "CBE" ? "Choose a receipt image with its QR code" : "Choose a photo or screenshot"}</span>
               </>
 
             )}
@@ -1679,7 +1673,7 @@ export default function Verify() {
             }}
             placeholder={
               bank === "CBE"
-                ? "CBE receipt URL or reference"
+                ? "Paste full CBE receipt link"
                 : "Enter reference number manually"
             }
             autoComplete="off"
@@ -1691,7 +1685,7 @@ export default function Verify() {
           <p className="text-xs text-ink/40 dark:text-mist mt-1">
 
             {bank === "CBE"
-              ? "You can paste a CBE receipt link or use the QR code from the receipt."
+              ? "Paste the complete CBE receipt link or upload a mobile-banking receipt whose QR contains that link."
               : "If the camera or OCR cannot read the receipt, enter the transaction reference manually."}
 
           </p>

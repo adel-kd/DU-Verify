@@ -22,16 +22,27 @@ Vercel frontend proxies requests to the existing Render backend.
 
 ## API contract
 
-POST /verify accepts provider, reference, optional accountSuffix and phoneNumber.
-This initial version supports reference/link lookups, not receipt image uploads.
+POST /verify accepts `provider`, `reference`, and the merchant's optional
+`expectedAmount`, `receiverAccountNumber`, and `receiverAccountHolderName`.
+This endpoint supports reference/link lookups, not receipt image uploads.
 Provider names: CBE, Telebirr, Dashen, Abyssinia, CBEBirr, MPesa, Awash.
-Use the last eight receiver account digits for legacy CBE FT references, the
-last five for Abyssinia, and the payer phone number for CBEBirr.
+`phoneNumber` is required for CBE Birr. Abyssinia uses the last five digits of
+`receiverAccountNumber`. CBE accepts only the complete official
+`https://mbreciept.cbe.com.et/<token>` mobile-banking receipt link: old FT
+references, USSD screenshots, and raw tokens are intentionally rejected.
 
-VALID means the provider confirmed a transaction, not that it paid a particular
-order. The integrator MUST check amount and receiver in the provider-specific
-receipt object and prevent reuse across orders. NOT_VERIFIED means the payment
-was not confirmed. Provider outages are not payment rejection evidence.
+When merchant matching fields are sent, the response returns a compact
+`verification` object with the status badge: green `VALID`, yellow
+`AMOUNT_MISMATCH`/`RECEIVER_MISMATCH`, red `NOT_VERIFIED`/`ALREADY_USED`, and
+black provider or OCR errors. This is the safe default for a checkout. Set
+`returnDetails: true` to include the provider receipt object for a manual
+review workflow. If no matching fields are sent, receipt details are returned
+so the merchant can perform their own comparison.
+
+`VALID` means the provider found the receipt and every supplied merchant check
+matched. `NOT_VERIFIED` means the provider responded but did not find the
+receipt. Provider outages are not payment-rejection evidence. A confirmed
+receipt is blocked from reuse within the same developer account.
 
 VALID and NOT_VERIFIED responses are billable. Provider errors, invalid input,
 authentication errors, and rate-limit rejections are not charged. GET /balance

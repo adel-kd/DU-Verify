@@ -10,6 +10,7 @@ const { requireAuth } = require("../middleware/auth");
 const { extractReceiptData } = require("../services/ocr");
 const { verifyReceipt } = require("../services/veritas");
 const { decodeQrFromImage } = require("../services/qrDecode");
+const { extractNewToken } = require("../services/providers/cbe");
 
 const router = express.Router();
 
@@ -65,6 +66,19 @@ router.use((req, res, next) => {
 function normalizeAccountNumber(value) {
   return String(value || "")
     .replace(/\D/g, "");
+}
+
+// CBE now verifies only the tokenized mobile-banking receipt link. A raw
+// token, FT reference, or USSD screenshot is not sufficient evidence.
+function isOfficialCbeReceiptLink(value) {
+  try {
+    const url = new URL(String(value || "").trim());
+    return url.protocol === "https:" &&
+      url.hostname.toLowerCase() === "mbreciept.cbe.com.et" &&
+      Boolean(extractNewToken(url.toString()));
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -1239,6 +1253,53 @@ router.post(
         }
       }
 
+      // A CBE screenshot is accepted only when its QR decodes to the current
+      // official receipt URL. Never use OCR to turn a USSD image or an old FT
+      // reference into a bank lookup.
+      if (bankName === "CBE") {
+        if (!reference) {
+          const log = await Verification.create({
+            businessId: business._id,
+            checkedBy: req.user._id,
+            bankName,
+            transactionRef: "CBE_LINK_REQUIRED",
+            amount: normalizedExpectedAmount ?? 0,
+            screenshotUrl: "not-stored",
+            status: "OCR_FAILED",
+            verificationCost: 0,
+          });
+          return res.status(200).json({
+            status: "OCR_FAILED",
+            verified: false,
+            failureReason: "CBE_LINK_REQUIRED",
+            userMessage: "CBE accepts a mobile-banking receipt only when its QR contains the complete receipt link. Please scan the QR or paste the full CBE receipt link manually.",
+            providerName: bankName,
+            log,
+          });
+        }
+
+        if (!isOfficialCbeReceiptLink(reference)) {
+          const log = await Verification.create({
+            businessId: business._id,
+            checkedBy: req.user._id,
+            bankName,
+            transactionRef: "INVALID_CBE_LINK",
+            amount: normalizedExpectedAmount ?? 0,
+            screenshotUrl: req.file ? "not-stored" : "manual-reference",
+            status: "INVALID_FORMAT",
+            verificationCost: 0,
+          });
+          return res.status(200).json({
+            status: "INVALID_FORMAT",
+            verified: false,
+            failureReason: "CBE_LINK_REQUIRED",
+            userMessage: "CBE USSD screenshots and old reference numbers are not accepted. Paste the complete https://mbreciept.cbe.com.et receipt link or use a mobile-banking receipt QR.",
+            providerName: bankName,
+            log,
+          });
+        }
+      }
+
       /* ========================================================
          STEP 1C: OCR FOR NON-CBE
       ======================================================== */
@@ -1469,10 +1530,36 @@ router.post(
 
       /* ========================================================
          STEP 2: DUPLICATE CHECK
-      ========================================================
+      ======================================================== */
 
-         Currently disabled as in previous implementation.
-      */
+      // A confirmed receipt may pay only one verification attempt for this
+      // business. Fail before debit; a failed/outage result is still retryable.
+      const previousVerification = await Verification.findOne({
+        businessId: business._id,
+        bankName,
+        transactionRef: reference,
+        status: { $in: ["VALID", "AMOUNT_MISMATCH", "RECEIVER_MISMATCH"] },
+      }).sort({ checkedAt: -1 });
+
+      if (previousVerification) {
+        const log = await Verification.create({
+          businessId: business._id,
+          checkedBy: req.user._id,
+          bankName,
+          transactionRef: reference,
+          amount: normalizedExpectedAmount ?? 0,
+          screenshotUrl: req.file ? "not-stored" : "manual-reference",
+          status: "ALREADY_USED",
+          verificationCost: 0,
+        });
+        return res.status(200).json({
+          status: "ALREADY_USED",
+          verified: false,
+          userMessage: "This receipt was already used for this business. Please ask the customer for a different payment receipt.",
+          providerName: bankName,
+          log,
+        });
+      }
 
       /* ========================================================
          STEP 3: CHARGE DU PT
@@ -1700,11 +1787,10 @@ router.post(
         if (
           hasExpectedAmount &&
           providerAmount != null &&
-          Number(providerAmount) +
-          0.01 <
-          Number(
-            normalizedExpectedAmount
-          )
+          Math.abs(
+            Number(providerAmount) -
+            Number(normalizedExpectedAmount)
+          ) > 0.01
         ) {
           status =
             "AMOUNT_MISMATCH";

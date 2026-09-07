@@ -93,16 +93,12 @@ function unsupported(bankName) {
 //   Normally:
 //   - OCR-extracted reference
 //   - manually entered reference
-//   - manually entered CBE receipt URL/token
-//
-// @param {string} options.suffix
-//   Legacy merchant account suffix.
+//   - manually entered CBE receipt URL
 //
 // @param {string} options.accountSuffix
 //   Merchant's own receiving-account suffix.
 //
 //   Used by:
-//   - CBE legacy receipts
 //   - Abyssinia
 //
 // @param {string} options.phoneNumber
@@ -137,23 +133,15 @@ async function dispatchReceipt({
     // CBE
     // ========================================================
     //
-    // CBE has two verification systems:
+    // CBE verifies its current receipt system only. The route validates a
+    // full QR/mobile-banking link before it reaches this dispatcher.
     //
-    // 1. NEW receipt system
-    //
-    //    QR/full URL:
+    // QR/full URL:
     //
     //    https://mbreciept.cbe.com.et/v2-...
     //
     //    verifyCBE() extracts the token and calls
     //    CBE's public transaction endpoint.
-    //
-    // 2. LEGACY receipt system
-    //
-    //    FTXXXXXXXXXX
-    //
-    //    verifyCBE() recognizes the FT reference and
-    //    uses the merchant account suffix.
     //
     // QR takes priority over the normal reference.
     //
@@ -165,7 +153,7 @@ async function dispatchReceipt({
     //
     // - QR
     // - manual input
-    // - OCR fallback
+    // - non-CBE OCR fallback (CBE has no OCR fallback)
     //
     // and passes it here.
     //
@@ -202,24 +190,7 @@ async function dispatchReceipt({
       );
 
 
-      /*
-       * verifyCBE() handles:
-       *
-       * NEW:
-       *   https://mbreciept.cbe.com.et/v2-...
-       *
-       * NEW:
-       *   mbreciept.cbe.com.et/v2-...
-       *
-       * NEW:
-       *   v2-...
-       *
-       * LEGACY:
-       *   FTXXXXXXXXXX
-       *
-       * accountSuffix is only needed for
-       * the legacy FT verification.
-       */
+      // verifyCBE extracts the token from the validated official URL.
 
       return verifyCBE(
         cbeReference,

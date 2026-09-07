@@ -11,11 +11,78 @@ const Platform = require('../models/PlatformSettings');
 const Ledger = require('../models/BillingLedger');
 const Audit = require('../models/AdminAction');
 const { verifyReceipt } = require('../services/veritas');
+const { extractNewToken } = require('../services/providers/cbe');
 const router = express.Router();
 const digest = value => crypto.createHash('sha256').update(value).digest('hex');
 const providers = ['CBE', 'Telebirr', 'Dashen', 'Abyssinia', 'CBEBirr', 'MPesa', 'Awash'];
 const fail = (status, message) => Object.assign(new Error(message), { status });
 const wrap = handler => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
+
+const normalizeAccount = value => String(value || '').replace(/\D/g, '');
+const normalizeName = value => String(value || '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+const badgeFor = status => ({
+  VALID: 'green',
+  AMOUNT_MISMATCH: 'yellow',
+  RECEIVER_MISMATCH: 'yellow',
+  NOT_VERIFIED: 'red',
+  ALREADY_USED: 'red',
+}[status] || 'black');
+
+function isOfficialCbeReceiptLink(value) {
+  try {
+    const url = new URL(String(value || '').trim());
+    return url.protocol === 'https:' && url.hostname.toLowerCase() === 'mbreciept.cbe.com.et' && Boolean(extractNewToken(url.toString()));
+  } catch {
+    return false;
+  }
+}
+
+function receiptDetails(body) {
+  const source = body?.data || body?.result || body || {};
+  return {
+    amount: Number(source.amount ?? source.transaction_amount ?? source.transactionAmount ?? source.totalAmount ?? source.total_amount),
+    receiverAccountNumber: String(source.receiver_account ?? source.receiverAccount ?? source.receiverAccountNumber ?? source.account_number ?? source.accountNumber ?? source.beneficiary_account ?? ''),
+    receiverAccountHolderName: String(source.receiver_name ?? source.receiverName ?? source.account_holder ?? source.accountHolderName ?? source.beneficiary_name ?? ''),
+  };
+}
+
+function outcomeFor(status, body, payload, duplicate = false) {
+  const details = receiptDetails(body);
+  const hasAmount = Number.isFinite(payload.expectedAmount);
+  const hasAccount = Boolean(payload.receiverAccountNumber);
+  const hasHolder = Boolean(payload.receiverAccountHolderName);
+  const hasMerchantChecks = hasAmount || hasAccount || hasHolder;
+  const amountMatched = hasAmount ? Number.isFinite(details.amount) && Math.abs(details.amount - payload.expectedAmount) <= 0.01 : null;
+  const accountMatched = hasAccount ? normalizeAccount(details.receiverAccountNumber) === normalizeAccount(payload.receiverAccountNumber) : null;
+  const holderMatched = hasHolder ? normalizeName(details.receiverAccountHolderName) === normalizeName(payload.receiverAccountHolderName) : null;
+  const receiverMatched = hasAccount || hasHolder ? (accountMatched !== false && holderMatched !== false) : null;
+  let outcome = status;
+  if (status === 'VALID' && amountMatched === false) outcome = 'AMOUNT_MISMATCH';
+  if ((status === 'VALID' || outcome === 'AMOUNT_MISMATCH') && receiverMatched === false) outcome = 'RECEIVER_MISMATCH';
+  const messages = {
+    VALID: hasMerchantChecks ? 'Verified. The receipt was found and matched the merchant checks provided.' : 'Receipt found. Compare the returned receipt details with your order before accepting payment.',
+    AMOUNT_MISMATCH: 'Receipt found, but the amount does not match.',
+    RECEIVER_MISMATCH: 'Receipt found, but the receiver account or holder name does not match.',
+    NOT_VERIFIED: 'Unconfirmed. The provider responded but did not find this receipt.',
+    ALREADY_USED: 'This receipt was used by this developer account before.',
+  };
+  return {
+    status: outcome,
+    verification: {
+      // Green is reserved for a completed merchant match. Red/black/yellow
+      // remain explicit even when the caller requested full receipt details.
+      badge: hasMerchantChecks || duplicate || outcome !== 'VALID' ? badgeFor(outcome) : null,
+      receiptFound: status === 'VALID',
+      amountMatched,
+      receiverAccountMatched: accountMatched,
+      receiverAccountHolderMatched: holderMatched,
+      receiverMatched,
+      duplicate,
+      merchantChecksProvided: hasMerchantChecks,
+    },
+    message: messages[outcome] || 'Please try again. No charge was applied.',
+  };
+}
 
 router.get('/config', wrap(async (req, res) => {
   const settings = await Settings.current();
@@ -43,19 +110,24 @@ router.post('/v1/verify', wrap(apiAuth), wrap(async (req, res) => {
   const user = req.developerUser;
   const idempotencyKey = req.get('Idempotency-Key');
   if (!idempotencyKey || !/^[A-Za-z0-9_-]{8,100}$/.test(idempotencyKey)) throw fail(400, 'Idempotency-Key must contain 8-100 letters, digits, underscores or hyphens');
-  const { provider, reference, accountSuffix = '', phoneNumber = '' } = req.body || {};
+  const { provider, reference, phoneNumber = '', receiverAccountNumber = '', receiverAccountHolderName = '', expectedAmount, returnDetails = false } = req.body || {};
   if (!providers.includes(provider) || typeof reference !== 'string' || !reference.trim() || reference.length > 300) throw fail(400, 'Provide a supported provider and a reference (maximum 300 characters)');
-  if (typeof accountSuffix !== 'string' || !/^\d{0,20}$/.test(accountSuffix) || typeof phoneNumber !== 'string' || !/^\+?\d{0,15}$/.test(phoneNumber)) throw fail(400, 'Invalid accountSuffix or phoneNumber');
-  const payload = { provider, reference: reference.trim(), accountSuffix, phoneNumber };
+  if (typeof phoneNumber !== 'string' || !/^\+?\d{0,15}$/.test(phoneNumber)) throw fail(400, 'Invalid phoneNumber');
+  if (typeof receiverAccountNumber !== 'string' || typeof receiverAccountHolderName !== 'string' || receiverAccountNumber.length > 80 || receiverAccountHolderName.length > 150 || typeof returnDetails !== 'boolean') throw fail(400, 'Invalid merchant matching fields');
+  const accountDigits = normalizeAccount(receiverAccountNumber);
+  if (receiverAccountNumber && (accountDigits.length < 4 || accountDigits.length > 34)) throw fail(400, 'receiverAccountNumber must contain 4-34 digits');
+  const parsedExpectedAmount = expectedAmount === undefined || expectedAmount === '' ? null : Number(expectedAmount);
+  if (parsedExpectedAmount !== null && (!Number.isFinite(parsedExpectedAmount) || parsedExpectedAmount < 0)) throw fail(400, 'expectedAmount must be a non-negative number');
+  const payload = { provider, reference: reference.trim(), phoneNumber, receiverAccountNumber: accountDigits, receiverAccountHolderName: receiverAccountHolderName.trim(), expectedAmount: parsedExpectedAmount, returnDetails };
   if (/^https?:/i.test(payload.reference)) {
-    const hosts = { CBE: ['mbreciept.cbe.com.et', 'mb.cbe.com.et', 'apps.cbe.com.et'], Dashen: ['receipt.dashensuperapp.com'], Abyssinia: ['cs.bankofabyssinia.com'], Awash: ['awashpay.awashbank.com'] };
+    const hosts = { CBE: ['mbreciept.cbe.com.et'], Dashen: ['receipt.dashensuperapp.com'], Abyssinia: ['cs.bankofabyssinia.com'], Awash: ['awashpay.awashbank.com'] };
     let url;
     try { url = new URL(payload.reference); } catch { throw fail(400, 'Invalid receipt URL'); }
     if (url.protocol !== 'https:' || url.username || url.password || !hosts[provider]?.includes(url.hostname) || (url.port && !['443', '100', '8225'].includes(url.port))) throw fail(400, 'Use an official HTTPS receipt URL for the selected provider');
   } else if (!/^[A-Za-z0-9_-]{4,150}$/.test(payload.reference)) throw fail(400, 'Invalid transaction reference');
   if (provider === 'CBEBirr' && !phoneNumber) throw fail(400, 'phoneNumber is required for CBE Birr');
-  if (provider === 'Abyssinia' && !/^\d{5}$/.test(accountSuffix)) throw fail(400, 'Abyssinia requires the last 5 receiving account digits as accountSuffix');
-  if (provider === 'CBE' && /^FT/i.test(payload.reference) && !/^\d{8}$/.test(accountSuffix)) throw fail(400, 'Legacy CBE references require the last 8 receiving account digits as accountSuffix');
+  if (provider === 'CBE' && !isOfficialCbeReceiptLink(payload.reference)) throw fail(400, 'CBE requires the complete https://mbreciept.cbe.com.et/<token> receipt link');
+  if (provider === 'Abyssinia' && accountDigits.length < 5) throw fail(400, 'Abyssinia requires receiverAccountNumber so its last 5 digits can be checked');
   const fingerprint = digest(JSON.stringify(payload));
   const existing = await Request.findOne({ userId: user._id, idempotencyKey });
   if (existing) {
@@ -63,6 +135,11 @@ router.post('/v1/verify', wrap(apiAuth), wrap(async (req, res) => {
     if (existing.state === 'pending') throw fail(409, 'Request is still processing. Retry with the same Idempotency-Key');
     res.setHeader('Idempotency-Replayed', 'true');
     return res.status(existing.httpStatus).json(existing.response);
+  }
+  const alreadyUsed = await Request.findOne({ userId: user._id, provider, reference: payload.reference, receiptFound: true }).sort({ createdAt: -1 });
+  if (alreadyUsed) {
+    const duplicate = outcomeFor('ALREADY_USED', null, payload, true);
+    return res.status(200).json({ requestId: alreadyUsed._id.toString(), status: duplicate.status, charged: 0, currency: 'DU_PT', provider, reference: payload.reference, ...duplicate });
   }
   const platform = await Platform.getOrCreate();
   if (platform.providerEnabled[provider] === false) throw fail(503, 'Provider temporarily disabled');
@@ -74,23 +151,27 @@ router.post('/v1/verify', wrap(apiAuth), wrap(async (req, res) => {
     await Developer.updateOne({ userId: user._id }, { $inc: { admissionCounter: 1 } }, { session });
     const count = await Request.countDocuments({ userId: user._id, createdAt: { $gt: new Date(Date.now() - 60000) } }).session(session);
     if (count >= req.apiSettings.requestsPerMinute) throw fail(429, 'Rate limit reached. Wait 60 seconds before retrying');
-    [record] = await Request.create([{ userId: user._id, keyId: req.apiKey._id, idempotencyKey, fingerprint, provider, cost: req.apiSettings.cost }], { session });
+    [record] = await Request.create([{ userId: user._id, keyId: req.apiKey._id, idempotencyKey, fingerprint, provider, reference: payload.reference, cost: req.apiSettings.cost }], { session });
   });
   let result;
   try {
-    result = await verifyReceipt({ bankName: provider, reference: payload.reference, accountSuffix, phoneNumber });
+    result = await verifyReceipt({ bankName: provider, reference: payload.reference, accountSuffix: provider === 'Abyssinia' ? accountDigits.slice(-5) : undefined, phoneNumber });
   } catch {
     result = { classification: { status: 'PROVIDER_UNAVAILABLE' } };
   }
-  const status = result.classification?.status || 'PROVIDER_UNAVAILABLE';
-  const billable = status === 'VALID' || status === 'NOT_VERIFIED';
+  const providerStatus = result.classification?.status || 'PROVIDER_UNAVAILABLE';
+  const outcome = outcomeFor(providerStatus, result.body, payload);
+  const billable = providerStatus === 'VALID' || providerStatus === 'NOT_VERIFIED';
   let response;
   let httpStatus = billable ? 200 : 503;
   await mongoose.connection.transaction(async session => {
     const pending = await Request.findOne({ _id: record._id, state: 'pending' }).session(session);
     if (!pending) throw fail(409, 'Request was resolved by support; retry with the same Idempotency-Key');
     let charged = 0;
-    if (billable) {
+    const duplicate = providerStatus === 'VALID' && await Request.findOne({ userId: user._id, provider, reference: payload.reference, receiptFound: true, _id: { $ne: record._id } }).session(session);
+    const finalOutcome = duplicate ? outcomeFor('ALREADY_USED', null, payload, true) : outcome;
+    const shouldCharge = billable && !duplicate;
+    if (shouldCharge) {
       const before = await User.findOneAndUpdate({ _id: user._id, duptBalance: { $gte: record.cost }, isActive: true }, { $inc: { duptBalance: -record.cost } }, { session });
       if (!before) {
         httpStatus = 402;
@@ -99,8 +180,19 @@ router.post('/v1/verify', wrap(apiAuth), wrap(async (req, res) => {
         await Ledger.create([{ businessId: user._id, userId: user._id, type: 'VERIFICATION_CHARGE', duptAmount: -charged, balanceBefore: before.duptBalance, balanceAfter: before.duptBalance - charged, internalTxRef: `api:${record._id}`, reason: `Developer API ${provider}` }], { session });
       }
     }
-    response = { requestId: record._id.toString(), status: httpStatus === 402 ? 'INSUFFICIENT_BALANCE' : status, charged, currency: 'DU_PT', provider, reference: payload.reference, message: httpStatus === 402 ? 'Insufficient balance; top up and submit a new request.' : billable ? 'Provider lookup complete. Match receiver and amount before accepting payment; this lookup does not prevent payment reuse.' : 'Please try again. No charge was applied.', ...(billable && charged ? { receipt: result.body } : {}) };
-    await Request.updateOne({ _id: record._id, state: 'pending' }, { $set: { state: 'complete', response, httpStatus, charged } }, { session });
+    const discloseReceipt = payload.returnDetails || !finalOutcome.verification.merchantChecksProvided;
+    response = {
+      requestId: record._id.toString(),
+      status: httpStatus === 402 ? 'INSUFFICIENT_BALANCE' : finalOutcome.status,
+      charged,
+      currency: 'DU_PT',
+      provider,
+      reference: payload.reference,
+      ...finalOutcome,
+      ...(httpStatus === 402 ? { message: 'Insufficient balance; top up and submit a new request.' } : {}),
+      ...(discloseReceipt && billable && charged ? { receipt: result.body } : {}),
+    };
+    await Request.updateOne({ _id: record._id, state: 'pending' }, { $set: { state: 'complete', response, httpStatus, charged, outcome: response.status, receiptFound: response.verification.receiptFound } }, { session });
   });
   return res.status(httpStatus).json(response);
 }));

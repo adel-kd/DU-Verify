@@ -11,7 +11,7 @@ export default function DeveloperAdmin() {
   useEffect(() => { load().catch(() => setError('Could not load developer accounts.')); }, []);
   async function act(fn) { setBusy(true); setError(''); try { await fn(); await load(); } catch (e) { setError(e.response?.data?.error || 'Please try again.'); } finally { setBusy(false); } }
   if (!data) return <p>{error || 'Loading developer accounts...'}</p>;
-  const field = 'rounded-lg border border-black/20 bg-white p-2 text-black';
+  const field = 'rounded-lg border border-black/20 bg-white p-2 text-black dark:border-white/15 dark:bg-[#17211d] dark:text-white';
   return <section className="space-y-5 min-w-0">
     <h2 className="text-2xl font-semibold">Developer API</h2>
     {error && <p role="alert">{error}</p>}
@@ -32,7 +32,7 @@ export default function DeveloperAdmin() {
         <button disabled={busy} className="underline" onClick={() => act(async () => { const r = await api.get(`/developer/admin/accounts/${p.userId._id}/usage`); setUsage(r.data.requests); })}>View requests</button>
       </div>
     </article>)}
-    {usage && <div className="space-y-2"><h3 className="font-semibold">Latest requests</h3>{usage.length === 0 && <p>No requests yet.</p>}{usage.map(r => <div className="rounded-lg border p-3" key={r._id}><p className="break-all text-sm">{r._id} / {r.provider} / {r.state} / {r.charged} DU PT</p>{r.state === 'pending' && Date.now() - new Date(r.createdAt).getTime() > 900000 && <button disabled={busy} className="underline" onClick={() => act(async () => { await api.post(`/developer/admin/requests/${r._id}/resolve`); setUsage(null); })}>Resolve interrupted request without charge</button>}</div>)}</div>}
+    {usage && <div className="space-y-2"><h3 className="font-semibold">Latest requests</h3>{usage.length === 0 && <p>No requests yet.</p>}{usage.map(r => <div className="rounded-lg border p-3" key={r._id}><p className="break-all text-sm">{r._id} / {r.provider} / {r.outcome || r.state} / {r.charged} DU PT</p><p className="mt-1 text-xs opacity-60">{r.receiptFound ? 'Receipt found' : r.state === 'complete' ? 'No confirmed receipt' : 'In progress'}</p>{r.state === 'pending' && Date.now() - new Date(r.createdAt).getTime() > 900000 && <button disabled={busy} className="underline" onClick={() => act(async () => { await api.post(`/developer/admin/requests/${r._id}/resolve`); setUsage(null); })}>Resolve interrupted request without charge</button>}</div>)}</div>}
     <a href="/developers" className="inline-block underline">Open developer documentation</a>
   </section>;
 }
