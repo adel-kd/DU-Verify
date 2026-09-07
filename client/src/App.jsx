@@ -16,6 +16,7 @@ const Terms = lazy(() => import("./pages/Terms.jsx"));
 const Privacy = lazy(() => import("./pages/Privacy.jsx"));
 const Help = lazy(() => import("./pages/Help.jsx"));
 const AdminDashboard = lazy(() => import("./pages/AdminDashboard.jsx"));
+const Developers = lazy(() => import("./pages/Developers.jsx"));
 
 function PageLoader() {
   return (
@@ -26,6 +27,7 @@ function PageLoader() {
 }
 
 function landingFor(user) {
+  if (window.location.hostname === 'dev.duverifay.com') return '/developers';
   if (!user) return "/login";
   if (user.role === "admin") return "/admin";
   if (user.role === "owner") return "/dashboard";
@@ -38,6 +40,7 @@ export default function App() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Routes>
+      <Route path="/developers" element={<Developers />} />
       <Route path="/login" element={user ? <Navigate to={landingFor(user)} /> : <Login />} />
       <Route path="/verify-otp" element={<VerifyOtp />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -63,7 +66,7 @@ export default function App() {
         path="/dashboard"
         element={
           <ProtectedRoute ownerOnly>
-            <Dashboard />
+            {sessionStorage.getItem('developer_signup') === '1' ? <Navigate to="/developers" replace /> : <Dashboard />}
           </ProtectedRoute>
         }
       />

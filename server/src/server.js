@@ -34,6 +34,7 @@ const allowedOrigins = new Set(
     "http://localhost:4173",
     "http://127.0.0.1:5173",
     "http://127.0.0.1:4173",
+    "https://dev.duverifay.com",
   ]
     .map(normalizeOrigin)
     .filter(Boolean)
@@ -54,6 +55,7 @@ const corsOptions = {
   allowedHeaders: [
     "Content-Type",
     "Authorization",
+    "Idempotency-Key",
     "ngrok-skip-browser-warning",
   ],
 };
@@ -99,6 +101,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/announcements", announcementsRoutes);
 app.use("/api/payment-accounts", paymentAccountsRoutes);
 app.use("/api/platform", platformRoutes);
+app.use("/api/developer", require("./routes/developer"));
 
 // ===============================
 // HEALTH CHECK
@@ -124,7 +127,13 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 
 connectDB()
-  .then(() => {
+  .then(async () => {
+    // Unique indexes must exist before admitting API requests or issuing keys.
+    await Promise.all([
+      require('./models/Developer').init(),
+      require('./models/DeveloperKey').init(),
+      require('./models/DeveloperRequest').init(),
+    ]);
     app.listen(PORT, () => {
       console.log(
         `[server] Digital Verification API listening on port ${PORT}`

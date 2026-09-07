@@ -144,8 +144,12 @@ router.post("/businesses/:id/adjust-balance", async (req, res) => {
     });
   }
 
+  const adjusted = await User.findOneAndUpdate(
+    { _id: business._id, duptBalance: balanceBefore },
+    { $inc: { duptBalance: numericAmount } }
+  );
+  if (!adjusted) return res.status(409).json({ error: 'Balance changed. Refresh and try again.' });
   business.duptBalance = balanceAfter;
-  await business.save();
 
   await BillingLedger.create({
     businessId: business._id,
@@ -674,8 +678,12 @@ router.post("/businesses/:id/refund", async (req, res) => {
   const balanceBefore = business.duptBalance;
   const balanceAfter = balanceBefore + amount;
 
+  const adjusted = await User.findOneAndUpdate(
+    { _id: business._id, duptBalance: balanceBefore },
+    { $inc: { duptBalance: amount } }
+  );
+  if (!adjusted) return res.status(409).json({ error: 'Balance changed. Refresh and try again.' });
   business.duptBalance = balanceAfter;
-  await business.save();
 
   await BillingLedger.create({
     businessId: business._id,

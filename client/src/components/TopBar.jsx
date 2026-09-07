@@ -58,6 +58,7 @@ export default function TopBar({ dark = true }) {
    * Settings remains available for staff.
    */
   const canShowSettings =
+    Boolean(user) &&
     user?.role !== "owner" &&
     user?.role !== "admin";
 
@@ -113,6 +114,7 @@ export default function TopBar({ dark = true }) {
       ======================================================= */}
 
       <div className="flex items-center gap-2 sm:gap-3 text-sm shrink-0">
+        {user?.role !== 'staff' && <Link to="/developers" className="text-xs underline underline-offset-4">API</Link>}
 
         {/* ====================================================
             CURRENT USER

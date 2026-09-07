@@ -1478,16 +1478,14 @@ router.post(
          STEP 3: CHARGE DU PT
       ======================================================== */
 
-      const balanceBefore =
-        business.duptBalance;
-
-      business.duptBalance -=
-        VERIFICATION_COST;
-
-      const balanceAfter =
-        business.duptBalance;
-
-      await business.save();
+      const debit = await User.findOneAndUpdate(
+        { _id: business._id, duptBalance: { $gte: VERIFICATION_COST } },
+        { $inc: { duptBalance: -VERIFICATION_COST } }
+      );
+      if (!debit) return res.status(402).json({ error: 'Insufficient DU PT balance. Please top up.' });
+      const balanceBefore = debit.duptBalance;
+      const balanceAfter = balanceBefore - VERIFICATION_COST;
+      business.duptBalance = balanceAfter;
 
       await BillingLedger.create({
         businessId:
@@ -1732,16 +1730,10 @@ router.post(
         status ===
         "PROVIDER_UNAVAILABLE"
       ) {
-        const refundBalanceBefore =
-          business.duptBalance;
-
-        business.duptBalance +=
-          VERIFICATION_COST;
-
-        const refundBalanceAfter =
-          business.duptBalance;
-
-        await business.save();
+        const refund = await User.findByIdAndUpdate(business._id, { $inc: { duptBalance: VERIFICATION_COST } });
+        const refundBalanceBefore = refund.duptBalance;
+        const refundBalanceAfter = refundBalanceBefore + VERIFICATION_COST;
+        business.duptBalance = refundBalanceAfter;
 
         await BillingLedger.create({
           businessId:
@@ -1750,7 +1742,7 @@ router.post(
           userId:
             req.user._id,
 
-          type: "VERIFICATION_REFUND",
+          type: "REFUND",
 
           duptAmount:
             VERIFICATION_COST,

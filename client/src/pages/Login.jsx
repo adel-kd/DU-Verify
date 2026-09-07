@@ -88,7 +88,7 @@ function GoogleButton({ label, onError }) {
 }
 
 export default function Login() {
-  const [mode, setMode] = useState("login");
+  const [mode, setMode] = useState(new URLSearchParams(window.location.search).get('mode') === 'register' ? 'register' : 'login');
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [businessTypes, setBusinessTypes] = useState([]);

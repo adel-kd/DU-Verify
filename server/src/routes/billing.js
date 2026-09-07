@@ -1481,7 +1481,7 @@ async function confirmAndCreditOnce(txRef) {
      BALANCE
   --------------------------------------------------------------- */
 
-  const balanceBefore =
+  let balanceBefore =
     Number(
       business.duptBalance
     ) || 0;
@@ -1520,7 +1520,7 @@ async function confirmAndCreditOnce(txRef) {
     };
   }
 
-  const balanceAfter =
+  let balanceAfter =
     balanceBefore +
     duptToCredit;
 
@@ -1532,10 +1532,10 @@ async function confirmAndCreditOnce(txRef) {
      UPDATE BALANCE
   --------------------------------------------------------------- */
 
-  business.duptBalance =
-    balanceAfter;
-
-  await business.save();
+  const creditedBusiness = await User.findByIdAndUpdate(business._id, { $inc: { duptBalance: duptToCredit } });
+  balanceBefore = creditedBusiness.duptBalance;
+  balanceAfter = balanceBefore + duptToCredit;
+  business.duptBalance = balanceAfter;
 
   console.log(
     `[billing] BALANCE UPDATED business=${business._id} balance=${business.duptBalance}`

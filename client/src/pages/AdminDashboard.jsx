@@ -8,9 +8,11 @@ import Modal from "../components/Modal.jsx";
 import Toast from "../components/Toast.jsx";
 import ProviderBadge from "../components/ProviderBadge.jsx";
 import CameraCapture from "../components/CameraCapture.jsx";
+import DeveloperAdmin from "../components/DeveloperAdmin.jsx";
 import { refreshPlatformContent } from "../hooks/usePlatformContent.js";
 
 const SECTIONS = [
+  { key: "Developers", label: "Developers", description: "API access, pricing, keys, and balances." },
   { key: "Overview", label: "Overview", description: "Platform health and totals." },
   { key: "Businesses", label: "Businesses", description: "Accounts, balances, and status." },
   { key: "Verify", label: "Verify a receipt", description: "Run a check for a client — handy for self-only clients with no staff." },
@@ -812,6 +814,7 @@ export default function AdminDashboard() {
           </nav>
 
           <section className="min-h-0 overflow-y-auto pr-1 sm:pr-2">
+        {tab === "Developers" && <DeveloperAdmin />}
         {tab === "Overview" && overview && (
           <>
             <section className="grid grid-cols-2 sm:grid-cols-3 gap-4">
