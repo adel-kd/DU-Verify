@@ -23,6 +23,15 @@ const router = express.Router();
 
 const CHAPA_BASE = "https://api.chapa.co/v1";
 
+function chapaReturnTarget(surface, status, txRef) {
+  const isDeveloper = surface === "developer";
+  const origin = isDeveloper
+    ? "https://developer-duverifay.vercel.app"
+    : process.env.FRONTEND_URL;
+  const pathname = isDeveloper ? "/developers" : "/dashboard";
+  return `${origin}${pathname}?topup=${status}&tx_ref=${encodeURIComponent(txRef)}`;
+}
+
 const DEFAULT_ETB_PER_CUSTOM_DUPT = 2;
 const RECEIPT_DIR = path.join(__dirname, "../../uploads/bank-transfer-receipts");
 const RECEIPT_MIME_TYPES = new Set([
@@ -877,12 +886,10 @@ router.post(
           txRef,
 
         callback_url:
-          `${process.env.BASE_URL}/api/billing/verify-chapa/${txRef}`,
+          `${process.env.BASE_URL}/api/billing/verify-chapa/${txRef}${req.body.returnSurface === "developer" ? "?surface=developer" : ""}`,
 
         return_url:
-          `${process.env.FRONTEND_URL}/dashboard?topup=pending&tx_ref=${encodeURIComponent(
-            txRef
-          )}`,
+          chapaReturnTarget(req.body.returnSurface, "pending", txRef),
 
         customization: {
           title:
@@ -1775,22 +1782,14 @@ router.get(
         `[chapa] CALLBACK COMPLETE tx_ref=${txRef} result=${status}`
       );
 
-      return res.redirect(
-        `${process.env.FRONTEND_URL}/dashboard?topup=${status}&tx_ref=${encodeURIComponent(
-          txRef
-        )}`
-      );
+      return res.redirect(chapaReturnTarget(req.query.surface, status, txRef));
     } catch (err) {
       console.error(
         `[billing] /verify-chapa ERROR tx_ref=${txRef}:`,
         err
       );
 
-      return res.redirect(
-        `${process.env.FRONTEND_URL}/dashboard?topup=failed&tx_ref=${encodeURIComponent(
-          txRef
-        )}`
-      );
+      return res.redirect(chapaReturnTarget(req.query.surface, "failed", txRef));
     }
   }
 );

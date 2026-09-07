@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import api from "../lib/api.js";
+import { isDeveloperSurface } from "../lib/appSurface.js";
 
 const EMPTY_METHODS = { chapaEnabled: true, bankTransferEnabled: false };
 
@@ -161,8 +162,8 @@ export default function BillingPanel({
     try {
       const payload =
         purchase.mode === "package"
-          ? { mode: "package", packageId: purchase.packageId }
-          : { mode: "custom", amount: purchase.amount };
+          ? { mode: "package", packageId: purchase.packageId, ...(isDeveloperSurface ? { returnSurface: "developer" } : {}) }
+          : { mode: "custom", amount: purchase.amount, ...(isDeveloperSurface ? { returnSurface: "developer" } : {}) };
       const { data } = await api.post("/billing/topup", payload);
       if (!data.checkout_url) throw new Error("Chapa checkout URL was not returned");
       window.location.href = data.checkout_url;

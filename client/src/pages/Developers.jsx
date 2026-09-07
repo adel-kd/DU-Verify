@@ -16,7 +16,7 @@ export default function Developers() {
   const [busy, setBusy] = useState(false);
   const [applicationName, setApplicationName] = useState('');
   const [name, setName] = useState('Production server');
-  const [section, setSection] = useState('Overview');
+  const [section, setSection] = useState(() => new URLSearchParams(window.location.search).has('topup') ? 'Top up' : 'Overview');
   async function load() {
     const { data: publicData } = await api.get('/developer/config');
     setConfig(publicData);

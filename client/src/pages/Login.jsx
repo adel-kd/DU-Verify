@@ -244,8 +244,8 @@ export default function Login() {
 
             {/* Header Titles */}
             <div className="mb-6 animate-slide-up anim-delay-1">
-              <h2 className="font-display text-2xl font-semibold text-white">Welcome back</h2>
-              <p className="text-xs text-mist mt-1">Sign in to your account to continue</p>
+              <h2 className="font-display text-2xl font-semibold text-white">{mode === "register" ? (isDeveloperSurface ? "Create your developer account" : "Create your account") : "Welcome back"}</h2>
+              <p className="text-xs text-mist mt-1">{mode === "register" ? (isDeveloperSurface ? "Register your organization to access the API" : "Register your business to continue") : "Sign in to your account to continue"}</p>
             </div>
 
             {/* Login / Register tabs */}
