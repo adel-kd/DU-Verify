@@ -5,7 +5,7 @@ import api from "../lib/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import logoLarge from "../assets/verified-logo.png";
 import PasswordInput from "../components/PasswordInput.jsx";
-import { authenticatedLanding } from "../lib/appSurface.js";
+import { authenticatedLanding, isDeveloperSurface } from "../lib/appSurface.js";
 
 // Strict RFC-style email check — instant client-side feedback.
 const EMAIL_REGEX =
@@ -146,7 +146,7 @@ export default function Login() {
     setError("");
 
     if (!businessType) {
-      setError("Please select what kind of business this is");
+      setError(isDeveloperSurface ? "Please select your organization type" : "Please select what kind of business this is");
       return;
     }
 
@@ -209,11 +209,11 @@ export default function Login() {
           {/* Middle Content */}
           <div className="relative z-10 flex flex-col items-start my-auto py-8">
             <h1 className="font-display text-6xl font-semibold leading-tight max-w-lg mb-4 text-white animate-slide-up anim-delay-2">
-              Catch every reused screenshot <span className="text-seal">before</span> it reaches the till.
+              {isDeveloperSurface ? <>Build payment verification <span className="text-seal">into</span> your product.</> : <>Catch every reused screenshot <span className="text-seal">before</span> it reaches the till.</>}
             </h1>
 
             <p className="text-mist text-sm leading-relaxed max-w-md mb-8 animate-slide-up anim-delay-4">
-              Your cashiers scan the customer’s payment confirmation. We verify it in real time with trusted banks. No more guessing if a screenshot is real, fake, or recycled.
+              {isDeveloperSurface ? "One API for Ethiopian payment references, usage billing, key rotation, and provider-aware results." : "Your cashiers scan the customer’s payment confirmation. We verify it in real time with trusted banks. No more guessing if a screenshot is real, fake, or recycled."}
             </p>
           </div>
 
@@ -273,7 +273,7 @@ export default function Login() {
                   mode === "register" ? "bg-seal text-black font-semibold shadow" : "text-mist hover:text-white"
                 }`}
               >
-                Register business
+                {isDeveloperSurface ? "Create developer account" : "Register business"}
               </button>
             </div>
 
@@ -336,7 +336,7 @@ export default function Login() {
                   <input
                     name="businessName"
                     required
-                    placeholder="Business name"
+                    placeholder={isDeveloperSurface ? "Organization or application name" : "Business name"}
                     className="w-full bg-[#121212] border border-[#222] rounded-lg px-3 py-2.5 text-sm placeholder:text-mist text-white focus:outline-none focus:border-seal transition-colors duration-200"
                   />
                 </div>
@@ -345,7 +345,7 @@ export default function Login() {
                   <input
                     name="ownerName"
                     required
-                    placeholder="Owner name"
+                    placeholder={isDeveloperSurface ? "Your full name" : "Owner name"}
                     className="w-full bg-[#121212] border border-[#222] rounded-lg px-3 py-2.5 text-sm placeholder:text-mist text-white focus:outline-none focus:border-seal transition-colors duration-200"
                   />
                 </div>
@@ -380,7 +380,7 @@ export default function Login() {
                     }`}
                   >
                     <option value="" disabled className="bg-[#121212] text-mist">
-                      What kind of business is this?
+                      {isDeveloperSurface ? "Organization type" : "What kind of business is this?"}
                     </option>
                     {businessTypes.map((t) => (
                       <option key={t.key} value={t.key} className="bg-[#121212] text-white">
@@ -398,7 +398,7 @@ export default function Login() {
                 {/* Who will actually run the checks? Drives which
                     dashboard features (staff management vs. the
                     checker itself) are enabled for this account. */}
-                <div className="animate-slide-up anim-delay-5">
+                {!isDeveloperSurface && <div className="animate-slide-up anim-delay-5">
                   <p className="text-xs text-mist mb-1.5">Who will verify receipts?</p>
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <button
@@ -426,7 +426,7 @@ export default function Login() {
                       <span className="block text-xs text-mist mt-0.5">Staff will verify instead</span>
                     </button>
                   </div>
-                </div>
+                </div>}
 
                 <div className="animate-slide-up anim-delay-5">
                   <PasswordInput name="password" autoComplete="new-password" />
