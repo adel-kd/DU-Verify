@@ -33,6 +33,16 @@
   button {
     font: inherit;
   }
+
+  /* Textareas need their own surface: transparent fields inherit the page
+     background, which can make white dark-mode text disappear. */
+  textarea {
+    @apply bg-[#f7f8f4] text-ink placeholder:text-ink/35;
+  }
+
+  .dark textarea {
+    @apply bg-[#17211d] text-paper placeholder:text-mist;
+  }
 }
 
 @layer components {
