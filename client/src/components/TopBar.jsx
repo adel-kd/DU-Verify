@@ -117,7 +117,7 @@ export default function TopBar({ dark = true }) {
       ======================================================= */}
 
       <div className="flex items-center gap-2 sm:gap-3 text-sm shrink-0">
-        {!isDeveloperSurface && user?.role !== 'staff' && <a href={developerPortalUrl} className="text-xs underline underline-offset-4">API</a>}
+        {!isDeveloperSurface && user?.role === 'owner' && <a href={developerPortalUrl} className="text-xs underline underline-offset-4">API</a>}
         {isDeveloperSurface && user && <button type="button" onClick={() => { logout(); nav('/login'); }} className="text-xs underline underline-offset-4">Sign out</button>}
 
         {/* ====================================================
