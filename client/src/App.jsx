@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import { useAuth } from "./context/AuthContext.jsx";
+import { authenticatedLanding, developerPortalUrl, isDeveloperSurface } from "./lib/appSurface.js";
 
 const Login = lazy(() => import("./pages/Login.jsx"));
 const VerifyOtp = lazy(() => import("./pages/VerifyOtp.jsx"));
@@ -26,12 +27,9 @@ function PageLoader() {
   );
 }
 
-function landingFor(user) {
-  if (window.location.hostname === 'dev.duverifay.com') return '/developers';
-  if (!user) return "/login";
-  if (user.role === "admin") return "/admin";
-  if (user.role === "owner") return "/dashboard";
-  return "/verify";
+function DeveloperRedirect() {
+  window.location.replace(developerPortalUrl);
+  return <PageLoader />;
 }
 
 export default function App() {
@@ -40,8 +38,8 @@ export default function App() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Routes>
-      <Route path="/developers" element={<Developers />} />
-      <Route path="/login" element={user ? <Navigate to={landingFor(user)} /> : <Login />} />
+      <Route path="/developers" element={isDeveloperSurface ? <Developers /> : <DeveloperRedirect />} />
+      <Route path="/login" element={user ? <Navigate to={authenticatedLanding(user)} /> : <Login />} />
       <Route path="/verify-otp" element={<VerifyOtp />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/complete-profile" element={<CompleteProfile />} />
@@ -53,7 +51,7 @@ export default function App() {
       <Route
         path="/verify"
         element={
-          <ProtectedRoute>
+          isDeveloperSurface ? <Navigate to="/developers" replace /> : <ProtectedRoute>
             {user?.role === "owner" && user?.accountMode === "team" ? (
               <Navigate to="/dashboard" replace />
             ) : (
@@ -65,7 +63,7 @@ export default function App() {
       <Route
         path="/dashboard"
         element={
-          <ProtectedRoute ownerOnly>
+          isDeveloperSurface ? <Navigate to="/developers" replace /> : <ProtectedRoute ownerOnly>
             {sessionStorage.getItem('developer_signup') === '1' ? <Navigate to="/developers" replace /> : <Dashboard />}
           </ProtectedRoute>
         }
@@ -73,7 +71,7 @@ export default function App() {
       <Route
         path="/settings"
         element={
-          <ProtectedRoute>
+          isDeveloperSurface ? <Navigate to="/developers" replace /> : <ProtectedRoute>
             {user?.role === "admin" ? (
               <Navigate to="/admin" replace />
             ) : user?.role === "owner" ? (
@@ -87,12 +85,12 @@ export default function App() {
       <Route
         path="/admin"
         element={
-          <ProtectedRoute adminOnly>
+          isDeveloperSurface ? <Navigate to="/developers" replace /> : <ProtectedRoute adminOnly>
             <AdminDashboard />
           </ProtectedRoute>
         }
       />
-        <Route path="*" element={<Navigate to={landingFor(user)} />} />
+        <Route path="*" element={<Navigate to={authenticatedLanding(user)} />} />
       </Routes>
     </Suspense>
   );

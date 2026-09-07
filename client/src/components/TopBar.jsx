@@ -2,9 +2,10 @@
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import logoSmall from "../assets/verified-logo.png";
+import { developerPortalUrl, isDeveloperSurface } from "../lib/appSurface.js";
 
 export default function TopBar({ dark = true }) {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   const nav = useNavigate();
   const location = useLocation();
@@ -49,6 +50,8 @@ export default function TopBar({ dark = true }) {
   } else if (user?.role === "owner") {
     homePath = "/dashboard";
   }
+
+  if (isDeveloperSurface) homePath = "/developers";
 
   const isAdmin = user?.role === "admin";
 
@@ -114,7 +117,8 @@ export default function TopBar({ dark = true }) {
       ======================================================= */}
 
       <div className="flex items-center gap-2 sm:gap-3 text-sm shrink-0">
-        {user?.role !== 'staff' && <Link to="/developers" className="text-xs underline underline-offset-4">API</Link>}
+        {!isDeveloperSurface && user?.role !== 'staff' && <a href={developerPortalUrl} className="text-xs underline underline-offset-4">API</a>}
+        {isDeveloperSurface && user && <button type="button" onClick={() => { logout(); nav('/login'); }} className="text-xs underline underline-offset-4">Sign out</button>}
 
         {/* ====================================================
             CURRENT USER

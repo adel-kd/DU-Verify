@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
+import { authenticatedLanding } from "../lib/appSurface.js";
 
 export default function AuthSuccess() {
   const { login } = useAuth();
@@ -46,11 +47,7 @@ export default function AuthSuccess() {
       const destination =
         user.profileComplete === false
           ? "/complete-profile"
-          : user.role === "owner"
-            ? "/dashboard"
-            : user.role === "admin"
-              ? "/admin"
-              : "/verify";
+          : authenticatedLanding(user);
 
       nav(destination, { replace: true });
     } catch {

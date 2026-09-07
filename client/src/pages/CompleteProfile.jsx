@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../lib/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
+import { authenticatedLanding } from "../lib/appSurface.js";
 import Footer from "../components/Footer.jsx";
 
 export default function CompleteProfile() {
@@ -48,7 +49,7 @@ export default function CompleteProfile() {
 
       updateUser(data.user);
 
-      nav("/dashboard", { replace: true });
+      nav(authenticatedLanding({ ...user, ...data.user, profileComplete: true }), { replace: true });
     } catch (err) {
       setError(err.response?.data?.error || "Could not save your details");
     } finally {

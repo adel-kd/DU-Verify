@@ -5,6 +5,7 @@ import api from "../lib/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import logoLarge from "../assets/verified-logo.png";
 import PasswordInput from "../components/PasswordInput.jsx";
+import { authenticatedLanding } from "../lib/appSurface.js";
 
 // Strict RFC-style email check — instant client-side feedback.
 const EMAIL_REGEX =
@@ -56,13 +57,6 @@ async function startGoogleAuth(event, setStarting, onError) {
     onError("Google sign-in is temporarily unavailable. Check the API connection and try again.");
     setStarting(false);
   }
-}
-
-function landingFor(user) {
-  if (!user) return "/login";
-  if (user.role === "admin") return "/admin";
-  if (user.role === "owner") return "/dashboard";
-  return "/verify";
 }
 
 // Shared Google OAuth entry point with hover micro-animation.
@@ -132,7 +126,7 @@ export default function Login() {
       });
 
       login(data.token, data.user);
-      nav(landingFor(data.user), { replace: true });
+      nav(authenticatedLanding(data.user), { replace: true });
     } catch (err) {
       if (err.response?.data?.code === "EMAIL_NOT_VERIFIED") {
         nav("/verify-otp", {

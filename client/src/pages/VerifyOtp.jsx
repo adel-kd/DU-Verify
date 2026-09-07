@@ -8,6 +8,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import api from "../lib/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import Footer from "../components/Footer.jsx";
+import { authenticatedLanding } from "../lib/appSurface.js";
 
 export default function VerifyOtp() {
   const { state } = useLocation();
@@ -30,14 +31,7 @@ export default function VerifyOtp() {
 
       login(data.token, data.user);
 
-      nav(
-        data.user.role === "admin"
-          ? "/admin"
-          : data.user.role === "owner"
-            ? "/dashboard"
-            : "/verify",
-        { replace: true }
-      );
+      nav(authenticatedLanding(data.user), { replace: true });
     } catch (err) {
       setError(err.response?.data?.error || "Verification failed");
     } finally {

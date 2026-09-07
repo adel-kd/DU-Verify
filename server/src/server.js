@@ -35,6 +35,7 @@ const allowedOrigins = new Set(
     "http://127.0.0.1:5173",
     "http://127.0.0.1:4173",
     "https://dev.duverifay.com",
+    "https://developer-duverifay.vercel.app",
   ]
     .map(normalizeOrigin)
     .filter(Boolean)
