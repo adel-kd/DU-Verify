@@ -10,6 +10,7 @@ import api from "../lib/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { authenticatedLanding } from "../lib/appSurface.js";
 import Footer from "../components/Footer.jsx";
+import StyledSelect from "../components/StyledSelect.jsx";
 
 export default function CompleteProfile() {
   const { user, updateUser } = useAuth();
@@ -87,21 +88,15 @@ export default function CompleteProfile() {
             className="w-full border border-black/20 dark:border-line bg-transparent px-3 py-2.5 text-sm"
           />
 
-          <select
+          <StyledSelect
             value={businessType}
             onChange={(e) => setBusinessType(e.target.value)}
             required
-            className="w-full border border-black/20 dark:border-line bg-white dark:bg-panel px-3 py-2.5 text-sm"
-          >
-            <option value="" disabled>
-              What kind of business is this?
-            </option>
-            {businessTypes.map((t) => (
-              <option key={t.key} value={t.key}>
-                {t.label}
-              </option>
-            ))}
-          </select>
+            ariaLabel="Business type"
+            placeholder="What kind of business is this?"
+            className="w-full"
+            options={businessTypes.map((type) => ({ value: type.key, label: type.label }))}
+          />
 
           {error && <p className="text-sm text-alarm">{error}</p>}
 

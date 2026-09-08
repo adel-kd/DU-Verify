@@ -20,6 +20,7 @@ import Footer from "../components/Footer.jsx";
 import Modal from "../components/Modal.jsx";
 import Toast from "../components/Toast.jsx";
 import BillingPanel from "../components/BillingPanel.jsx";
+import StyledSelect from "../components/StyledSelect.jsx";
 import {
   MyAccountTab,
   PersonalInfoTab,
@@ -661,27 +662,25 @@ export default function Dashboard() {
                         Recent verification logs
                       </h2>
 
-                      <select
+                      <StyledSelect
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value)}
-                        className="border border-black/20 dark:border-line text-sm rounded-xl px-3 py-1.5 w-full sm:w-auto bg-white dark:bg-[#1a1a1a] text-ink dark:text-white"
-                      >
-                        <option value="">All statuses</option>
-                        <option value="VALID">Valid</option>
-                        <option value="ALREADY_USED">Already used</option>
-                        <option value="OCR_FAILED">OCR failed</option>
-                        <option value="AMOUNT_MISMATCH">Amount mismatch</option>
-                        <option value="RECEIVER_MISMATCH">Receiver mismatch</option>
-                        <option value="NOT_VERIFIED">Not verified</option>
-                        <option value="PROVIDER_UNAVAILABLE">
-                          Provider unavailable
-                        </option>
-                        <option value="PROVIDER_ERROR">
-                          Provider error
-                        </option>
-                        <option value="INVALID_FORMAT">Invalid format</option>
-                        <option value="SITE_ERROR">Site error</option>
-                      </select>
+                        ariaLabel="Filter verification logs by status"
+                        className="w-full sm:w-56"
+                        options={[
+                          { value: "", label: "All statuses" },
+                          { value: "VALID", label: "Valid" },
+                          { value: "ALREADY_USED", label: "Already used" },
+                          { value: "OCR_FAILED", label: "OCR failed" },
+                          { value: "AMOUNT_MISMATCH", label: "Amount mismatch" },
+                          { value: "RECEIVER_MISMATCH", label: "Receiver mismatch" },
+                          { value: "NOT_VERIFIED", label: "Not verified" },
+                          { value: "PROVIDER_UNAVAILABLE", label: "Provider unavailable" },
+                          { value: "PROVIDER_ERROR", label: "Provider error" },
+                          { value: "INVALID_FORMAT", label: "Invalid format" },
+                          { value: "SITE_ERROR", label: "Site error" },
+                        ]}
+                      />
                     </div>
 
                     <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">

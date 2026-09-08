@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Mail, Lock, ChevronDown } from "lucide-react";
+import { Mail, Lock } from "lucide-react";
 import api from "../lib/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import logoLarge from "../assets/verified-logo.png";
 import PasswordInput from "../components/PasswordInput.jsx";
+import StyledSelect from "../components/StyledSelect.jsx";
 import { authenticatedLanding, isDeveloperSurface } from "../lib/appSurface.js";
 
 // Strict RFC-style email check — instant client-side feedback.
@@ -369,29 +370,15 @@ export default function Login() {
                   />
                 </div>
 
-                {/* Business type — fixed: custom chevron, native picker hidden */}
-                <div className="relative animate-slide-up anim-delay-5">
-                  <select
+                <div className="animate-slide-up anim-delay-5">
+                  <StyledSelect
                     value={businessType}
                     onChange={(e) => setBusinessType(e.target.value)}
                     required
-                    className={`select-with-icon w-full appearance-none bg-[#121212] border border-[#222] rounded-lg pl-3 pr-10 py-2.5 text-sm focus:outline-none focus:border-seal cursor-pointer transition-colors duration-200 ${
-                      businessType === "" ? "text-mist" : "text-white"
-                    }`}
-                  >
-                    <option value="" disabled className="bg-[#121212] text-mist">
-                      {isDeveloperSurface ? "Organization type" : "What kind of business is this?"}
-                    </option>
-                    {businessTypes.map((t) => (
-                      <option key={t.key} value={t.key} className="bg-[#121212] text-white">
-                        {t.label}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown
-                    size={16}
-                    aria-hidden="true"
-                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-mist"
+                    ariaLabel={isDeveloperSurface ? "Organization type" : "Business type"}
+                    placeholder={isDeveloperSurface ? "Organization type" : "What kind of business is this?"}
+                    buttonClassName="border-[#222] bg-[#121212] text-white hover:bg-seal/10 dark:border-[#222] dark:bg-[#121212]"
+                    options={businessTypes.map((type) => ({ value: type.key, label: type.label }))}
                   />
                 </div>
 

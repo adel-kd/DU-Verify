@@ -7,6 +7,7 @@ import Footer from "../components/Footer.jsx";
 import Toast from "../components/Toast.jsx";
 import BillingPanel from "../components/BillingPanel.jsx";
 import ProviderBadge from "../components/ProviderBadge.jsx";
+import StyledSelect from "../components/StyledSelect.jsx";
 
 const TABS_OWNER = [
   { key: "account", label: "My Account" },
@@ -940,29 +941,18 @@ export function PaymentAccountsTab({ setToast }) {
               Provider
             </span>
 
-            <select
+            <StyledSelect
               name="provider"
               value={form.provider}
               onChange={onChange}
-              className="w-full mt-1.5 border border-black/10 dark:border-line rounded-lg px-3 py-2 text-sm bg-white dark:bg-[#1a1a1a] text-ink dark:text-paper"
-            >
-              {PROVIDERS.map((p) => (
-                <option
-                  key={p}
-                  value={p}
-                  disabled={configuredProviders.includes(
-                    p
-                  )}
-                >
-                  {p}
-                  {configuredProviders.includes(
-                    p
-                  )
-                    ? " (already configured)"
-                    : ""}
-                </option>
-              ))}
-            </select>
+              ariaLabel="Payment provider"
+              className="mt-1.5 w-full"
+              options={PROVIDERS.map((provider) => ({
+                value: provider,
+                label: `${provider}${configuredProviders.includes(provider) ? " (already configured)" : ""}`,
+                disabled: configuredProviders.includes(provider),
+              }))}
+            />
           </label>
 
           <div className="grid sm:grid-cols-2 gap-4">

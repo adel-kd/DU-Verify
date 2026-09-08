@@ -9,6 +9,7 @@ import Toast from "../components/Toast.jsx";
 import ProviderBadge from "../components/ProviderBadge.jsx";
 import CameraCapture from "../components/CameraCapture.jsx";
 import DeveloperAdmin from "../components/DeveloperAdmin.jsx";
+import StyledSelect from "../components/StyledSelect.jsx";
 import { refreshPlatformContent } from "../hooks/usePlatformContent.js";
 
 const SECTIONS = [
@@ -1127,18 +1128,20 @@ export default function AdminDashboard() {
 
         {tab === "Top-ups" && (
           <section className="bg-white dark:bg-panel rounded-2xl border border-black/5 dark:border-line shadow-sm p-4 sm:p-5">
-            <select
+            <StyledSelect
               value={topupStatusFilter}
               onChange={(e) => setTopupStatusFilter(e.target.value)}
-              className="mb-4 border border-black/10 dark:border-line rounded-lg text-sm px-2 py-1.5"
-            >
-              <option value="">All statuses</option>
-              <option value="success">Success</option>
-              <option value="pending">Pending</option>
-              <option value="pending_review">Pending review</option>
-              <option value="failed">Failed</option>
-              <option value="rejected">Rejected</option>
-            </select>
+              ariaLabel="Filter top-ups by status"
+              className="mb-4 w-full sm:w-52"
+              options={[
+                { value: "", label: "All statuses" },
+                { value: "success", label: "Success" },
+                { value: "pending", label: "Pending" },
+                { value: "pending_review", label: "Pending review" },
+                { value: "failed", label: "Failed" },
+                { value: "rejected", label: "Rejected" },
+              ]}
+            />
             <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
               <table className="w-full text-sm min-w-[640px]">
                 <thead className="text-left text-ink/40 dark:text-mist border-b border-black/5 dark:border-line">
@@ -1185,12 +1188,18 @@ export default function AdminDashboard() {
                   <h2 className="font-display font-semibold text-ink dark:text-paper">Direct payment receipt reviews</h2>
                   <p className="text-xs text-ink/40 dark:text-mist mt-1">Unconfirmed receipts never credit a balance until an admin approves them.</p>
                 </div>
-                <select value={bankTransferFilter} onChange={(event) => setBankTransferFilter(event.target.value)} className="border border-black/10 dark:border-line rounded-lg text-sm px-2 py-1.5 bg-transparent">
-                  <option value="pending_review">Waiting for review</option>
-                  <option value="success">Approved</option>
-                  <option value="rejected">Rejected</option>
-                  <option value="all">All bank transfers</option>
-                </select>
+                <StyledSelect
+                  value={bankTransferFilter}
+                  onChange={(event) => setBankTransferFilter(event.target.value)}
+                  ariaLabel="Filter direct payment reviews"
+                  className="w-full sm:w-56"
+                  options={[
+                    { value: "pending_review", label: "Waiting for review" },
+                    { value: "success", label: "Approved" },
+                    { value: "rejected", label: "Rejected" },
+                    { value: "all", label: "All bank transfers" },
+                  ]}
+                />
               </div>
             </section>
 
@@ -1345,18 +1354,16 @@ export default function AdminDashboard() {
                 placeholder="Search business / reason…"
                 className="border border-black/20 dark:border-line bg-white dark:bg-[#1a1a1a] text-ink dark:text-white text-sm px-3 py-1.5 w-full sm:w-64"
               />
-              <select
+              <StyledSelect
                 value={ledgerTypeFilter}
                 onChange={(e) => setLedgerTypeFilter(e.target.value)}
-                className="border border-black/20 dark:border-line bg-white dark:bg-[#1a1a1a] text-ink dark:text-white text-sm px-2 py-1.5"
-              >
-                <option value="">All types</option>
-                {[...new Set(ledger.map((l) => l.type))].map((type) => (
-                  <option key={type} value={type}>
-                    {type.replaceAll("_", " ")}
-                  </option>
-                ))}
-              </select>
+                ariaLabel="Filter billing ledger by type"
+                className="w-full sm:w-52"
+                options={[
+                  { value: "", label: "All types" },
+                  ...[...new Set(ledger.map((item) => item.type))].map((type) => ({ value: type, label: type.replaceAll("_", " ") })),
+                ]}
+              />
             </div>
             <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
               <table className="w-full text-sm min-w-[760px]">
@@ -1421,15 +1428,17 @@ export default function AdminDashboard() {
                   className="w-full border border-black/15 dark:border-line px-3 py-2 text-sm"
                 />
                 <div className="flex flex-col sm:flex-row gap-3">
-                  <select
+                  <StyledSelect
                     value={annForm.severity}
                     onChange={(e) => setAnnForm({ ...annForm, severity: e.target.value })}
-                    className="border border-black/15 dark:border-line px-3 py-2 text-sm"
-                  >
-                    <option value="info">Info</option>
-                    <option value="warning">Warning</option>
-                    <option value="critical">Critical</option>
-                  </select>
+                    ariaLabel="Announcement severity"
+                    className="w-full sm:w-40"
+                    options={[
+                      { value: "info", label: "Info" },
+                      { value: "warning", label: "Warning" },
+                      { value: "critical", label: "Critical" },
+                    ]}
+                  />
                   {/* Searchable client picker + history filter — one box, both jobs. */}
                   <input
                     value={annBusinessSearch}
@@ -1437,18 +1446,16 @@ export default function AdminDashboard() {
                     placeholder="Search clients or announcements…"
                     className="border border-black/15 dark:border-line px-3 py-2 text-sm w-full sm:w-48"
                   />
-                  <select
+                  <StyledSelect
                     value={annForm.businessId}
                     onChange={(e) => setAnnForm({ ...annForm, businessId: e.target.value })}
-                    className="border border-black/15 dark:border-line bg-white dark:bg-[#1a1a1a] text-ink dark:text-white px-3 py-2 text-sm w-full sm:w-auto"
-                  >
-                    <option value="">All clients (broadcast)</option>
-                    {filteredBusinesses.map((b) => (
-                      <option key={b._id} value={b._id}>
-                        {b.businessName || b.ownerName || b.email}
-                      </option>
-                    ))}
-                  </select>
+                    ariaLabel="Announcement audience"
+                    className="w-full sm:min-w-56 sm:w-auto"
+                    options={[
+                      { value: "", label: "All clients (broadcast)" },
+                      ...filteredBusinesses.map((business) => ({ value: business._id, label: business.businessName || business.ownerName || business.email })),
+                    ]}
+                  />
                   <button
                     disabled={annSaving}
                     className="bg-seal text-white text-sm font-semibold px-4 py-2 disabled:opacity-50 sm:ml-auto"
@@ -1792,9 +1799,12 @@ export default function AdminDashboard() {
               </div>
 
               <form onSubmit={submitPlatformAccount} className="grid sm:grid-cols-2 gap-3 border-t border-black/5 dark:border-line pt-4">
-                <select value={platformAccountForm.provider} onChange={(event) => setPlatformAccountForm((current) => ({ ...current, provider: event.target.value }))} className="border border-black/10 dark:border-line bg-transparent rounded-lg px-3 py-2 text-sm">
-                  {(platformAccountProviders.length ? platformAccountProviders : ["CBE", "Telebirr", "Dashen", "Abyssinia", "Awash"]).map((provider) => <option key={provider} value={provider}>{provider}</option>)}
-                </select>
+                <StyledSelect
+                  value={platformAccountForm.provider}
+                  onChange={(event) => setPlatformAccountForm((current) => ({ ...current, provider: event.target.value }))}
+                  ariaLabel="Platform payment account provider"
+                  options={(platformAccountProviders.length ? platformAccountProviders : ["CBE", "Telebirr", "Dashen", "Abyssinia", "Awash"]).map((provider) => ({ value: provider, label: provider }))}
+                />
                 <input value={platformAccountForm.label} onChange={(event) => setPlatformAccountForm((current) => ({ ...current, label: event.target.value }))} placeholder="Display label (optional)" className="border border-black/10 dark:border-line bg-transparent rounded-lg px-3 py-2 text-sm" />
                 <input required value={platformAccountForm.accountNumber} onChange={(event) => setPlatformAccountForm((current) => ({ ...current, accountNumber: event.target.value }))} placeholder="Account or wallet number" className="border border-black/10 dark:border-line bg-transparent rounded-lg px-3 py-2 text-sm" />
                 <input required value={platformAccountForm.accountHolderName} onChange={(event) => setPlatformAccountForm((current) => ({ ...current, accountHolderName: event.target.value }))} placeholder="Account holder name" className="border border-black/10 dark:border-line bg-transparent rounded-lg px-3 py-2 text-sm" />
