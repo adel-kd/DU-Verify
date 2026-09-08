@@ -76,6 +76,11 @@
   .field-control {
     @apply w-full rounded-xl border border-black/10 bg-[#f7f8f4] px-4 py-3 text-ink shadow-inner shadow-black/[0.02] transition placeholder:text-ink/30 hover:border-black/20 focus:border-seal focus:bg-white focus:outline-none focus:ring-4 focus:ring-seal/10 dark:border-white/10 dark:bg-black/20 dark:text-white dark:placeholder:text-white/30 dark:hover:border-white/20 dark:focus:border-seal dark:focus:bg-black/30;
   }
+
+  /* A denser writing surface for admin editors and multi-line form fields. */
+  .editor-control {
+    @apply w-full rounded-xl border border-black/10 bg-[#f7f8f4] px-3.5 py-2.5 text-ink shadow-inner shadow-black/[0.03] transition placeholder:text-ink/35 hover:border-black/20 focus:border-seal focus:bg-white focus:outline-none focus:ring-4 focus:ring-seal/10 dark:border-white/10 dark:bg-[#17211d] dark:text-paper dark:placeholder:text-mist dark:hover:border-white/20 dark:focus:border-seal dark:focus:bg-[#1c2923];
+  }
 }
 
 @keyframes spin-slow {

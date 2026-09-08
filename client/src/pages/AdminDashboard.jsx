@@ -1243,7 +1243,7 @@ export default function AdminDashboard() {
                             onChange={(event) => setReviewReasons((current) => ({ ...current, [item._id]: event.target.value }))}
                             placeholder="Review reason (required)"
                             rows={3}
-                            className="w-full border border-black/10 dark:border-line bg-transparent rounded-lg px-3 py-2 text-sm"
+                            className="editor-control min-h-[5.5rem] text-sm"
                           />
                           <div className="grid grid-cols-2 gap-2">
                             <button type="button" disabled={reviewSavingId === item._id} onClick={() => decideBankTransfer(item, "approve")} className="bg-seal text-ink rounded-lg px-3 py-2 text-sm font-semibold disabled:opacity-50">Approve</button>
@@ -1418,14 +1418,14 @@ export default function AdminDashboard() {
                   value={annForm.title}
                   onChange={(e) => setAnnForm({ ...annForm, title: e.target.value })}
                   placeholder="Title (e.g. Scheduled maintenance)"
-                  className="w-full border border-black/15 dark:border-line px-3 py-2 text-sm"
+                  className="editor-control text-sm"
                 />
                 <textarea
                   value={annForm.message}
                   onChange={(e) => setAnnForm({ ...annForm, message: e.target.value })}
                   placeholder="Message shown to the client…"
                   rows={4}
-                  className="w-full border border-black/15 dark:border-line px-3 py-2 text-sm"
+                  className="editor-control min-h-[7.5rem] text-sm"
                 />
                 <div className="flex flex-col sm:flex-row gap-3">
                   <StyledSelect
@@ -1805,10 +1805,10 @@ export default function AdminDashboard() {
                   ariaLabel="Platform payment account provider"
                   options={(platformAccountProviders.length ? platformAccountProviders : ["CBE", "Telebirr", "Dashen", "Abyssinia", "Awash"]).map((provider) => ({ value: provider, label: provider }))}
                 />
-                <input value={platformAccountForm.label} onChange={(event) => setPlatformAccountForm((current) => ({ ...current, label: event.target.value }))} placeholder="Display label (optional)" className="border border-black/10 dark:border-line bg-transparent rounded-lg px-3 py-2 text-sm" />
-                <input required value={platformAccountForm.accountNumber} onChange={(event) => setPlatformAccountForm((current) => ({ ...current, accountNumber: event.target.value }))} placeholder="Account or wallet number" className="border border-black/10 dark:border-line bg-transparent rounded-lg px-3 py-2 text-sm" />
-                <input required value={platformAccountForm.accountHolderName} onChange={(event) => setPlatformAccountForm((current) => ({ ...current, accountHolderName: event.target.value }))} placeholder="Account holder name" className="border border-black/10 dark:border-line bg-transparent rounded-lg px-3 py-2 text-sm" />
-                <textarea value={platformAccountForm.instructions} onChange={(event) => setPlatformAccountForm((current) => ({ ...current, instructions: event.target.value }))} placeholder="Extra payment instructions (optional)" rows={2} className="sm:col-span-2 border border-black/10 dark:border-line bg-transparent rounded-lg px-3 py-2 text-sm" />
+                <input value={platformAccountForm.label} onChange={(event) => setPlatformAccountForm((current) => ({ ...current, label: event.target.value }))} placeholder="Display label (optional)" className="editor-control text-sm" />
+                <input required value={platformAccountForm.accountNumber} onChange={(event) => setPlatformAccountForm((current) => ({ ...current, accountNumber: event.target.value }))} placeholder="Account or wallet number" className="editor-control text-sm" />
+                <input required value={platformAccountForm.accountHolderName} onChange={(event) => setPlatformAccountForm((current) => ({ ...current, accountHolderName: event.target.value }))} placeholder="Account holder name" className="editor-control text-sm" />
+                <textarea value={platformAccountForm.instructions} onChange={(event) => setPlatformAccountForm((current) => ({ ...current, instructions: event.target.value }))} placeholder="Extra payment instructions (optional)" rows={2} className="editor-control sm:col-span-2 min-h-[5.5rem] text-sm" />
                 <div className="sm:col-span-2 flex gap-2">
                   <button disabled={platformAccountSaving} className="flex-1 bg-ink text-paper rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-50">{platformAccountSaving ? "Saving…" : editingPlatformAccountId ? "Save account changes" : "Add receiving account"}</button>
                   {editingPlatformAccountId && <button type="button" onClick={cancelPlatformAccountEdit} className="border border-black/10 dark:border-line rounded-lg px-4 py-2.5 text-sm">Cancel</button>}
@@ -1820,12 +1820,12 @@ export default function AdminDashboard() {
               <h2 className="font-display font-semibold text-ink dark:text-paper mb-1">Terms, privacy, and contact</h2>
               <p className="text-xs text-ink/40 dark:text-mist mb-4">Legal text is plain text. Leave a legal field empty to keep the built-in policy. Contact details appear only in the footer.</p>
               <form onSubmit={saveSiteContent} className="space-y-4">
-                <label className="block"><span className="text-xs font-semibold uppercase tracking-wide text-ink/50 dark:text-mist">Terms of Service</span><textarea value={contentForm.termsBody} onChange={(event) => setContentForm((current) => ({ ...current, termsBody: event.target.value }))} rows={8} className="w-full mt-1 border border-black/10 dark:border-line bg-transparent rounded-lg px-3 py-2 text-sm" placeholder="Leave blank to use the built-in Terms of Service" /></label>
-                <label className="block"><span className="text-xs font-semibold uppercase tracking-wide text-ink/50 dark:text-mist">Privacy Policy</span><textarea value={contentForm.privacyBody} onChange={(event) => setContentForm((current) => ({ ...current, privacyBody: event.target.value }))} rows={8} className="w-full mt-1 border border-black/10 dark:border-line bg-transparent rounded-lg px-3 py-2 text-sm" placeholder="Leave blank to use the built-in Privacy Policy" /></label>
+                <label className="block"><span className="text-xs font-semibold uppercase tracking-wide text-ink/50 dark:text-mist">Terms of Service</span><textarea value={contentForm.termsBody} onChange={(event) => setContentForm((current) => ({ ...current, termsBody: event.target.value }))} rows={8} className="editor-control mt-1 min-h-[12rem] text-sm leading-6" placeholder="Leave blank to use the built-in Terms of Service" /></label>
+                <label className="block"><span className="text-xs font-semibold uppercase tracking-wide text-ink/50 dark:text-mist">Privacy Policy</span><textarea value={contentForm.privacyBody} onChange={(event) => setContentForm((current) => ({ ...current, privacyBody: event.target.value }))} rows={8} className="editor-control mt-1 min-h-[12rem] text-sm leading-6" placeholder="Leave blank to use the built-in Privacy Policy" /></label>
                 <div className="grid sm:grid-cols-3 gap-3">
-                  <input type="email" value={contentForm.contactEmail} onChange={(event) => setContentForm((current) => ({ ...current, contactEmail: event.target.value }))} placeholder="Contact email" className="border border-black/10 dark:border-line bg-transparent rounded-lg px-3 py-2 text-sm" />
-                  <input value={contentForm.contactPhone} onChange={(event) => setContentForm((current) => ({ ...current, contactPhone: event.target.value }))} placeholder="Contact phone" className="border border-black/10 dark:border-line bg-transparent rounded-lg px-3 py-2 text-sm" />
-                  <input value={contentForm.contactAddress} onChange={(event) => setContentForm((current) => ({ ...current, contactAddress: event.target.value }))} placeholder="Contact address" className="border border-black/10 dark:border-line bg-transparent rounded-lg px-3 py-2 text-sm" />
+                  <input type="email" value={contentForm.contactEmail} onChange={(event) => setContentForm((current) => ({ ...current, contactEmail: event.target.value }))} placeholder="Contact email" className="editor-control text-sm" />
+                  <input value={contentForm.contactPhone} onChange={(event) => setContentForm((current) => ({ ...current, contactPhone: event.target.value }))} placeholder="Contact phone" className="editor-control text-sm" />
+                  <input value={contentForm.contactAddress} onChange={(event) => setContentForm((current) => ({ ...current, contactAddress: event.target.value }))} placeholder="Contact address" className="editor-control text-sm" />
                 </div>
                 <button disabled={platformSaving} className="bg-seal text-ink rounded-lg px-4 py-2.5 text-sm font-semibold disabled:opacity-50">{platformSaving ? "Saving…" : "Save site content"}</button>
               </form>
