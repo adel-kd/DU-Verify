@@ -1,7 +1,11 @@
 const configuredSurface = String(import.meta.env.VITE_APP_SURFACE || '').toLowerCase();
+const isLocalDeveloperPreview =
+  ['localhost', '127.0.0.1'].includes(window.location.hostname) &&
+  window.location.pathname.startsWith('/developers');
 
 export const isDeveloperSurface =
   configuredSurface === 'developer' ||
+  isLocalDeveloperPreview ||
   window.location.hostname === 'developer-duverifay.vercel.app' ||
   window.location.hostname === 'dev.duverifay.com';
 
