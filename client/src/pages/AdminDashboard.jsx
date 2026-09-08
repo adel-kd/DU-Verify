@@ -10,6 +10,7 @@ import ProviderBadge from "../components/ProviderBadge.jsx";
 import CameraCapture from "../components/CameraCapture.jsx";
 import DeveloperAdmin from "../components/DeveloperAdmin.jsx";
 import StyledSelect from "../components/StyledSelect.jsx";
+import MobileShutterNav from "../components/MobileShutterNav.jsx";
 import { refreshPlatformContent } from "../hooks/usePlatformContent.js";
 
 const SECTIONS = [
@@ -804,25 +805,13 @@ export default function AdminDashboard() {
             </nav>
           </aside>
 
-          <nav
-            aria-label="Platform admin sections"
-            className="lg:hidden h-10 min-w-0 flex items-start gap-2 overflow-x-auto overscroll-x-contain snap-x snap-mandatory pb-1 -mx-1 px-1"
-          >
-            {SECTIONS.map((section) => (
-              <button
-                key={section.key}
-                type="button"
-                onClick={() => setTab(section.key)}
-                className={`h-9 shrink-0 snap-start whitespace-nowrap rounded-lg border px-3 text-sm font-medium transition ${
-                  tab === section.key
-                    ? "bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper"
-                    : "bg-white text-ink/60 border-black/10 dark:bg-panel dark:text-mist dark:border-line"
-                }`}
-              >
-                {section.label}
-              </button>
-            ))}
-          </nav>
+          <MobileShutterNav
+            title="Platform admin"
+            description="Oversight and manual controls across DU Verify."
+            sections={SECTIONS}
+            activeKey={tab}
+            onSelect={setTab}
+          />
 
           <section className="min-h-0 overflow-y-auto pr-1 sm:pr-2">
         {tab === "Developers" && <DeveloperAdmin />}

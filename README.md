@@ -25,6 +25,10 @@ The two Vercel projects intentionally use one frontend codebase with different
 - Owner, staff, platform-admin, and developer access controls.
 - Owners can choose solo mode or team mode, configure receiving accounts, add or
   disable staff, review verification activity, and manage DU PT.
+- Returning from Pro to Solo asks for confirmation and disables active staff
+  access without deleting their saved accounts.
+- Mobile owner and platform-admin dashboards use a hamburger-triggered shutter
+  menu instead of a static or horizontally scrolling sidebar.
 - Staff sign in using their phone and password. Ethiopian forms such as
   `09XXXXXXXX`, `2519XXXXXXXX`, and `+2519XXXXXXXX` resolve to the same account.
 - Staff can use the live browser camera, the device camera, or browse for an image

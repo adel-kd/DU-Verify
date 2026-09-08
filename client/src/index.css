@@ -138,6 +138,41 @@
 .anim-delay-1 { animation-delay: 0.1s; }
 .anim-delay-2 { animation-delay: 0.2s; }
 .anim-delay-3 { animation-delay: 0.3s; }
+
+@keyframes shutter-in {
+  from { transform: translateX(-102%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes shutter-backdrop {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes shutter-item {
+  from { opacity: 0; transform: translateX(-16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.animate-shutter-in {
+  animation: shutter-in 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-shutter-backdrop {
+  animation: shutter-backdrop 0.25s ease-out both;
+}
+
+.animate-shutter-item {
+  animation: shutter-item 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-shutter-in,
+  .animate-shutter-backdrop,
+  .animate-shutter-item {
+    animation-duration: 0.01ms;
+  }
+}
 .anim-delay-4 { animation-delay: 0.4s; }
 .anim-delay-5 { animation-delay: 0.5s; }
 .anim-delay-6 { animation-delay: 0.6s; }

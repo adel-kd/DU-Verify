@@ -2,7 +2,7 @@
 import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import logoSmall from "../assets/verified-logo.png";
-import { developerPortalUrl, isDeveloperSurface } from "../lib/appSurface.js";
+import { isDeveloperSurface } from "../lib/appSurface.js";
 
 export default function TopBar({ dark = true }) {
   const { user, logout } = useAuth();
@@ -117,7 +117,6 @@ export default function TopBar({ dark = true }) {
       ======================================================= */}
 
       <div className="flex items-center gap-2 sm:gap-3 text-sm shrink-0">
-        {!isDeveloperSurface && user?.role === 'owner' && <a href={developerPortalUrl} className="text-xs underline underline-offset-4">API</a>}
         {isDeveloperSurface && user && <button type="button" onClick={() => { logout(); nav('/login'); }} className="text-xs underline underline-offset-4">Sign out</button>}
 
         {/* ====================================================

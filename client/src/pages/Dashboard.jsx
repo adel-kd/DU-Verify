@@ -21,6 +21,7 @@ import Modal from "../components/Modal.jsx";
 import Toast from "../components/Toast.jsx";
 import BillingPanel from "../components/BillingPanel.jsx";
 import StyledSelect from "../components/StyledSelect.jsx";
+import MobileShutterNav from "../components/MobileShutterNav.jsx";
 import {
   MyAccountTab,
   PersonalInfoTab,
@@ -142,10 +143,12 @@ export default function Dashboard() {
   const [staffSaving, setStaffSaving] = useState(false);
 
   const [topUpModalOpen, setTopUpModalOpen] = useState(false);
+  const [soloConfirmOpen, setSoloConfirmOpen] = useState(false);
 
   // "solo" (owner verifies receipts themselves) vs "team" (staff verify
   // instead of the owner). Chosen at registration; switchable below.
   const accountMode = user?.accountMode || "solo";
+  const activeStaffCount = staff.filter((member) => member.isActive).length;
   const [accountModeSaving, setAccountModeSaving] = useState(false);
 
   // Load all data
@@ -397,7 +400,7 @@ export default function Dashboard() {
     setTopUpModalOpen(true);
   }
 
-  async function switchAccountMode(nextMode) {
+  async function switchAccountMode(nextMode, deactivateStaff = false) {
     setAccountModeSaving(true);
 
     try {
@@ -405,6 +408,7 @@ export default function Dashboard() {
         "/auth/me/account-mode",
         {
           accountMode: nextMode,
+          deactivateStaff,
         }
       );
 
@@ -416,6 +420,12 @@ export default function Dashboard() {
         type: "success",
         text: data.message || "Account mode updated.",
       });
+
+      if (data.deactivatedStaffCount > 0) {
+        await loadStaff();
+      }
+
+      return true;
     } catch (err) {
       setToast({
         type: "error",
@@ -423,9 +433,19 @@ export default function Dashboard() {
           err.response?.data?.error ||
           "Could not update account mode",
       });
+      return false;
     } finally {
       setAccountModeSaving(false);
     }
+  }
+
+  function requestSoloMode() {
+    setSoloConfirmOpen(true);
+  }
+
+  async function confirmSoloMode() {
+    const changed = await switchAccountMode("solo", true);
+    if (changed) setSoloConfirmOpen(false);
   }
 
   return (
@@ -462,22 +482,13 @@ export default function Dashboard() {
           ))}
         </aside>
 
-        {/* Mobile tab bar */}
-        <div className="lg:hidden h-10 min-w-0 flex items-start gap-2 overflow-x-auto overscroll-x-contain snap-x snap-mandatory pb-1 -mx-1 px-1">
-          {SECTIONS.map((s) => (
-            <button
-              key={s.key}
-              onClick={() => setTab(s.key)}
-              className={`w-32 h-9 shrink-0 snap-start whitespace-nowrap text-sm font-medium rounded-lg px-3 flex items-center justify-center border transition ${
-                tab === s.key
-                  ? "bg-ink text-paper border-ink dark:bg-paper dark:text-ink dark:border-paper"
-                  : "bg-white text-ink/60 border-black/10 dark:bg-panel dark:text-mist dark:border-line"
-              }`}
-            >
-              {s.mobileLabel || s.label}
-            </button>
-          ))}
-        </div>
+        <MobileShutterNav
+          title="Business workspace"
+          description="Move between checks, staff, billing, and account controls."
+          sections={SECTIONS}
+          activeKey={tab}
+          onSelect={setTab}
+        />
 
         <div className="min-h-0 min-w-0 overflow-y-auto pr-1 space-y-4">
 
@@ -913,19 +924,20 @@ export default function Dashboard() {
                           </table>
                         </div>
 
-                        {staff.every((s) => !s.isActive) && (
+                        <div className="mt-4 flex flex-col items-start gap-1.5 border-t border-black/5 pt-4 dark:border-white/10">
                           <button
-                            onClick={() =>
-                              switchAccountMode("solo")
-                            }
+                            onClick={requestSoloMode}
                             disabled={accountModeSaving}
-                            className="text-xs underline text-ink/40 dark:text-mist mt-3 disabled:opacity-50"
+                            className="rounded-xl border border-black/15 px-3 py-2 text-xs font-semibold text-ink transition hover:border-seal hover:bg-seal/10 dark:border-white/15 dark:text-paper dark:hover:border-seal disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {accountModeSaving
                               ? "Switching…"
-                              : "Switch back to verifying receipts yourself"}
+                              : "Switch back to Solo"}
                           </button>
-                        )}
+                          <p className="text-[11px] text-ink/40 dark:text-mist">
+                            Active staff access will be disabled after confirmation.
+                          </p>
+                        </div>
                       </>
                     )}
                   </div>
@@ -1043,6 +1055,44 @@ export default function Dashboard() {
               : "Create staff account"}
           </button>
         </form>
+      </Modal>
+
+      <Modal
+        open={soloConfirmOpen}
+        title="Switch back to Solo?"
+        onClose={() => !accountModeSaving && setSoloConfirmOpen(false)}
+      >
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-seal/20 bg-seal/[0.06] p-4">
+            <p className="text-sm font-semibold text-ink dark:text-paper">
+              You will verify receipts yourself again.
+            </p>
+            <p className="mt-1.5 text-xs leading-5 text-ink/55 dark:text-mist">
+              {activeStaffCount > 0
+                ? `${activeStaffCount} active staff ${activeStaffCount === 1 ? "account will" : "accounts will"} be disabled. Their records stay saved and can be enabled after upgrading to Pro again.`
+                : "Your staff records stay saved and can be enabled after upgrading to Pro again."}
+            </p>
+          </div>
+
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={() => setSoloConfirmOpen(false)}
+              disabled={accountModeSaving}
+              className="rounded-xl border border-black/15 px-4 py-2.5 text-sm font-semibold text-ink transition hover:border-seal dark:border-white/15 dark:text-paper dark:hover:border-seal disabled:opacity-50"
+            >
+              Keep Pro
+            </button>
+            <button
+              type="button"
+              onClick={confirmSoloMode}
+              disabled={accountModeSaving}
+              className="rounded-xl bg-seal px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sealDark disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {accountModeSaving ? "Switching…" : "Confirm Solo"}
+            </button>
+          </div>
+        </div>
       </Modal>
 
       {/* Top-up modal */}

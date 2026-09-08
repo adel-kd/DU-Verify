@@ -1874,9 +1874,9 @@ router.patch(
          Pro" action when switching FROM solo.
 
    Switching solo -> team is always allowed (that's the upgrade).
-   Switching team -> solo is only allowed once there are no active
-   staff accounts left, so an owner can't accidentally lock staff
-   who are still working out of their own dashboard.
+   Switching team -> solo requires explicit confirmation when staff
+   are active. A confirmed downgrade disables their access but keeps
+   their records so the owner can re-enable them after upgrading again.
 ============================================================ */
 
 // PATCH /api/auth/me/account-mode { accountMode: "solo" | "team" }
@@ -1886,13 +1886,15 @@ router.patch(
   requireOwner,
   async (req, res) => {
     try {
-      const { accountMode } = req.body;
+      const { accountMode, deactivateStaff = false } = req.body;
 
       if (!["solo", "team"].includes(accountMode)) {
         return res.status(400).json({
           error: "accountMode must be 'solo' or 'team'",
         });
       }
+
+      let deactivatedStaffCount = 0;
 
       if (accountMode === "solo" && req.user.accountMode !== "solo") {
         const activeStaffCount = await User.countDocuments({
@@ -1902,10 +1904,24 @@ router.patch(
         });
 
         if (activeStaffCount > 0) {
-          return res.status(409).json({
-            error:
-              "Disable or remove your active staff accounts before switching back to verifying receipts yourself.",
-          });
+          if (deactivateStaff !== true) {
+            return res.status(409).json({
+              error:
+                "Confirm that active staff access should be disabled before switching to Solo.",
+              code: "ACTIVE_STAFF_CONFIRMATION_REQUIRED",
+              activeStaffCount,
+            });
+          }
+
+          const result = await User.updateMany(
+            {
+              businessId: req.user._id,
+              role: "staff",
+              isActive: true,
+            },
+            { $set: { isActive: false } }
+          );
+          deactivatedStaffCount = result.modifiedCount || 0;
         }
       }
 
@@ -1916,10 +1932,13 @@ router.patch(
 
       return res.json({
         user: safeUser,
+        deactivatedStaffCount,
         message:
           accountMode === "team"
             ? "Upgraded to Pro. You can now add staff accounts."
-            : "Switched back to verifying receipts yourself.",
+            : deactivatedStaffCount > 0
+              ? `Switched to Solo and disabled ${deactivatedStaffCount} active staff account${deactivatedStaffCount === 1 ? "" : "s"}.`
+              : "Switched back to verifying receipts yourself.",
       });
     } catch (err) {
       console.error("[auth/me/account-mode]", err.message);
