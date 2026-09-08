@@ -4,6 +4,10 @@ const Verification = require("../models/Verification");
 const { requireAuth } = require("../middleware/auth");
 const { requireOwner } = require("../middleware/roleCheck");
 const bcrypt = require("bcryptjs");
+const {
+  normalizeEthiopianPhone,
+  phoneConditions,
+} = require("../utils/phone");
 
 const router = express.Router();
 
@@ -29,9 +33,13 @@ router.post("/", async (req, res) => {
       return res.status(400).json({ error: "Name, phone and password are required" });
     }
 
-    const strippedPhone = cleanPhone.replace(/[\s\-\(\)]/g, "");
+    const normalizedPhone = normalizeEthiopianPhone(cleanPhone);
+    if (!normalizedPhone) {
+      return res.status(400).json({ error: "Enter a valid Ethiopian mobile number" });
+    }
+
     const existing = await User.findOne({
-      $or: [{ phone: cleanPhone }, { phone: strippedPhone }]
+      $or: phoneConditions(normalizedPhone),
     });
     if (existing) {
       return res.status(409).json({ error: "An account with that phone number already exists" });
@@ -43,7 +51,7 @@ router.post("/", async (req, res) => {
       ownerName: ownerNameStr,
       // Store a normalized value so the preflight duplicate check and the
       // database unique index evaluate the same phone number.
-      phone: strippedPhone,
+      phone: normalizedPhone,
       // Staff have no email — they sign in with phone + password. Leave
       // the field unset (not null): the sparse unique index on email only
       // excludes documents missing the field entirely, so explicitly

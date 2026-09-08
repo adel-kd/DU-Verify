@@ -13,6 +13,10 @@ const { requireAuth } = require("../middleware/auth");
 const { requireAdmin } = require("../middleware/roleCheck");
 const { sendPurchaseReceiptEmail } = require("../services/email");
 const { creditBankTransferTopup } = require("../services/billingCredit");
+const {
+  normalizeEthiopianPhone,
+  phoneConditions,
+} = require("../utils/phone");
 
 const router = express.Router();
 
@@ -731,12 +735,15 @@ router.post("/admins", async (req, res) => {
     }
 
     const normalizedEmail = String(email || "").toLowerCase().trim();
-    const normalizedPhone = String(phone || "").trim();
+    const normalizedPhone = normalizeEthiopianPhone(phone);
+    if (!normalizedPhone) {
+      return res.status(400).json({
+        error: "Enter a valid Ethiopian mobile number",
+      });
+    }
 
     const search = {
-      $or: [
-        { phone: normalizedPhone },
-      ],
+      $or: phoneConditions(normalizedPhone),
     };
 
     if (normalizedEmail) {

@@ -15,6 +15,10 @@ const { requireAuth } = require("../middleware/auth");
 const { requireOwner } = require("../middleware/roleCheck");
 const { validateRegistrationEmail } = require("../services/emailValidation");
 const { sendVerificationEmail, sendOtpEmail } = require("../services/email");
+const {
+  normalizeEthiopianPhone,
+  phoneConditions,
+} = require("../utils/phone");
 
 const router = express.Router();
 
@@ -644,6 +648,13 @@ router.post(
       const normalizedAccountMode =
         accountMode === "team" ? "team" : "solo";
 
+      const normalizedPhone = normalizeEthiopianPhone(phone);
+      if (!normalizedPhone) {
+        return res.status(400).json({
+          error: "Enter a valid Ethiopian mobile number",
+        });
+      }
+
       /*
        * Validate business type
        */
@@ -681,7 +692,7 @@ router.post(
         await User.findOne({
           $or: [
             { email: normalizedEmail },
-            { phone },
+            ...phoneConditions(normalizedPhone),
           ],
         });
 
@@ -689,7 +700,7 @@ router.post(
         await PendingRegistration.findOne({
           $or: [
             { email: normalizedEmail },
-            { phone },
+            ...phoneConditions(normalizedPhone),
           ],
         });
 
@@ -745,7 +756,7 @@ router.post(
         await PendingRegistration.create({
           businessName,
           ownerName,
-          phone,
+          phone: normalizedPhone,
           email: normalizedEmail,
           businessType,
           accountMode: normalizedAccountMode,
@@ -950,7 +961,7 @@ router.post(
         const clash = await User.findOne({
           $or: [
             { email: pending.email },
-            { phone: pending.phone },
+            ...phoneConditions(pending.phone),
           ],
         });
 
@@ -1236,14 +1247,20 @@ router.patch(
         return res.status(400).json({ error: "Phone number is required" });
       }
 
+      const normalizedPhone = normalizeEthiopianPhone(phone);
+      if (!normalizedPhone) {
+        return res.status(400).json({
+          error: "Enter a valid Ethiopian mobile number",
+        });
+      }
+
       if (!BUSINESS_TYPE_KEYS.includes(businessType)) {
         return res.status(400).json({ error: "Invalid business type" });
       }
 
       const existing = await User.findOne({
-        phone,
-
         _id: { $ne: user._id },
+        $or: phoneConditions(normalizedPhone),
       });
 
       if (existing) {
@@ -1252,7 +1269,7 @@ router.patch(
         });
       }
 
-      user.phone = String(phone).trim();
+      user.phone = normalizedPhone;
 
       user.businessType = businessType;
 
@@ -1314,14 +1331,9 @@ router.post(
        * Supports normalized phone numbers (e.g. spaces, +251 prefix).
        */
       const normalizedEmail = rawInput.toLowerCase();
-      const strippedPhone = rawInput.replace(/[\s\-\(\)]/g, "");
-      const ethiopianPhone = strippedPhone.replace(/^\+?251/, "0");
-
       const searchConditions = [
         { email: normalizedEmail },
-        { phone: rawInput },
-        { phone: strippedPhone },
-        { phone: ethiopianPhone },
+        ...phoneConditions(rawInput),
       ];
 
       const user = await User.findOne({
@@ -1537,6 +1549,15 @@ router.patch(
         });
       }
 
+      const normalizedPhone = normalizeEthiopianPhone(phone);
+      if (!normalizedPhone) {
+        return res.status(400).json({
+          error: "Enter a valid Ethiopian mobile number",
+        });
+      }
+
+      const normalizedEmail = String(email).toLowerCase().trim();
+
       /*
        * Only owners can modify
        * business-level configuration.
@@ -1609,8 +1630,8 @@ router.patch(
           },
 
           $or: [
-            { email },
-            { phone },
+            { email: normalizedEmail },
+            ...phoneConditions(normalizedPhone),
           ],
         });
 
@@ -1628,10 +1649,10 @@ router.patch(
         ownerName;
 
       req.user.phone =
-        phone;
+        normalizedPhone;
 
       req.user.email =
-        email;
+        normalizedEmail;
 
       await req.user.save();
 
