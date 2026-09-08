@@ -24,6 +24,7 @@ import CameraCapture from "../components/CameraCapture.jsx";
 import AnnouncementBanner from "../components/AnnouncementBanner.jsx";
 import UnverifiedNotice from "../components/UnverifiedNotice.jsx";
 import ProviderBadge from "../components/ProviderBadge.jsx";
+import InstallStaffApp from "../components/InstallStaffApp.jsx";
 
 
 /* ============================================================
@@ -1124,9 +1125,12 @@ export default function Verify() {
           )}
 
         <header className="max-w-2xl pt-2">
-          <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-sealDark dark:text-seal">
-            Payment desk
-          </p>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-sealDark dark:text-seal">
+              Payment desk
+            </p>
+            {user?.role === "staff" && <InstallStaffApp />}
+          </div>
           <h1 className="font-display text-3xl font-semibold tracking-[-0.045em] text-ink sm:text-4xl dark:text-white">
             Verify a payment with confidence.
           </h1>

@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test": "npm run test:pwa",
+    "test:pwa": "node scripts/testPwa.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
