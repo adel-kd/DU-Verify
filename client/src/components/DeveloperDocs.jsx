@@ -58,7 +58,7 @@ const statusRows = [
 
 export default function DeveloperDocs({ base, config }) {
   const requestFields = [
-    ['provider', 'string', 'Required', `One of: ${config?.providers.join(', ') || 'supported provider list'}.`],
+    ['provider', 'string', 'Required', `The provider that issued the receipt. It may differ from the receiving bank. One of: ${config?.providers.join(', ') || 'supported provider list'}.`],
     ['reference', 'string', 'Required', "Transaction reference or the provider's supported official receipt link."],
     ['expectedAmount', 'number', 'Optional', 'Expected ETB amount. A difference above 0.01 returns AMOUNT_MISMATCH.'],
     ['receiverAccountNumber', 'string', 'Optional', 'Expected receiving account. Spaces and separators are normalized.'],
@@ -107,7 +107,7 @@ export default function DeveloperDocs({ base, config }) {
     <header className="border-b border-black/10 bg-[#eef2ec] px-6 py-8 sm:px-9 sm:py-10">
       <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-black/45">API reference / v1</p>
       <h2 className="mt-3 max-w-2xl font-display text-3xl font-semibold tracking-tight sm:text-4xl">From receipt to a safe decision.</h2>
-      <p className="mt-3 max-w-2xl text-sm leading-6 text-black/60">Send the payment reference with your expected amount and receiver. DU Verifay confirms the receipt with the provider, then checks whether it belongs to your merchant account.</p>
+      <p className="mt-3 max-w-2xl text-sm leading-6 text-black/60">Send the payment reference with your expected amount and receiver. DU Verifay confirms the receipt with its issuing provider, then checks the destination independently, including cross-provider transfers.</p>
       <div className="mt-5 inline-flex max-w-full items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 font-mono text-xs">
         <span className="h-2 w-2 shrink-0 rounded-full bg-seal" />
         <span className="truncate">{base}</span>

@@ -1,7 +1,7 @@
 // scripts/testHolderMatching.js
 //
 // Manual test harness for the OCR-tolerant holder matching and
-// provider-specific account selection implemented in
+// cross-provider account selection implemented in
 // src/routes/verify.js.
 //
 // Covers positive OCR-tolerance cases AND negative
@@ -112,9 +112,11 @@ check("19 account with one genuinely changed digit", accountNumbersMatch("123456
 check("20 account with multiple changed digits", accountNumbersMatch("12345678", "12349679"), false);
 check("21 wrong account + unrelated name", matched(awashOnly, "999999999999999", "MOHAMMED ALI", "Awash"), false);
 check("22 both identity fields missing", matched(awashOnly, null, null, "Awash"), false);
-check("23 Awash payment against CBE-only account", matched(cbeOnly, "1000123456789", "MOHAMMED ALI", "Awash"), false);
-check("24 provider mismatch with otherwise similar holder", matched(cbeOnly, null, "ADIL KEDIR ABRAR", "Awash"), false);
+check("23 Awash receipt paid to CBE account", matched(cbeOnly, "1000123456789", "MOHAMMED ALI", "Awash"), true);
+check("24 cross-provider receipt with wrong receiver", matched(cbeOnly, null, "ADIL KEDIR ABRAR", "Awash"), false);
 check("25 intentionally similar but different names", ocrTolerantNamesMatch("ADEL KEDIR ABRAR", "ADELIE KEDIR ABARA").matched, false);
+check("26 Telebirr receipt paid to Awash account", matched(awashOnly, "014251781921700", "ADEL KEDIR ABRAR", "Telebirr"), true);
+check("27 Awash receipt paid to CBE account by holder", matched(cbeOnly, null, "MOHAMMED ALI", "Awash"), true);
 
 /* ============================================================
    OR-LOGIC TRUTH TABLE

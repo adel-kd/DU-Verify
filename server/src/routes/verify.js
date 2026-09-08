@@ -19,7 +19,32 @@ const upload = multer({
   limits: {
     fileSize: 8 * 1024 * 1024,
   },
+  fileFilter: (_req, file, callback) => {
+    if (!String(file.mimetype || "").startsWith("image/")) {
+      const error = new Error("Receipt must be an image");
+      error.code = "INVALID_RECEIPT_TYPE";
+      return callback(error);
+    }
+
+    return callback(null, true);
+  },
 });
+
+function uploadReceipt(req, res, next) {
+  upload.single("image")(req, res, (error) => {
+    if (!error) return next();
+
+    if (error.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({ error: "Receipt image must be 8 MB or smaller" });
+    }
+
+    if (error.code === "INVALID_RECEIPT_TYPE") {
+      return res.status(400).json({ error: "Receipt must be an image from the camera, gallery, or computer" });
+    }
+
+    return next(error);
+  });
+}
 
 // One DU PT per billable verification.
 const VERIFICATION_COST = 1;
@@ -726,24 +751,11 @@ function formatVerificationHour(
 /**
  * Match the receiver against admin-configured payment accounts.
  *
- * PROVIDER-SPECIFIC ACCOUNT SELECTION (STRICT):
- *
- * When the customer pays through a specific bank/provider, the
- * comparison MUST use the admin-configured receiver accounts
- * belonging to that SAME provider.
- *
- * Example:
- *
- *   Payment provider: Awash
- *   Admin config:     Awash -> A, CBE -> B, Dashen -> C
- *
- *   The Awash payment is compared ONLY against the configured
- *   Awash account(s). A valid CBE account/name does NOT make an
- *   Awash transaction pass.
- *
- * If the business has no accounts tagged with this provider,
- * we fall back to comparing all enabled accounts so existing
- * configurations keep working.
+ * The receipt provider and receiving institution can differ.
+ * For example, a Telebirr receipt may confirm money sent to an
+ * Awash account. Every enabled account still belongs to the same
+ * merchant, so the confirmed receiver is checked against all of
+ * them rather than only accounts tagged with the receipt provider.
  *
  * Matching priority (ANY ONE reliable match is sufficient):
  *
@@ -764,48 +776,12 @@ function matchAgainstPaymentAccounts(
 
   let matchedAccount = null;
 
-  // Provider-specific selection first.
-  const normalizedBank =
-    String(bankName || "")
-      .toLowerCase()
-      .trim();
-
-  const providerAccounts = paymentAccounts.filter(
-    (account) =>
-      String(account.provider || "")
-        .toLowerCase()
-        .trim() === normalizedBank
-  );
-
-  /*
-   * SECURITY:
-   *
-   * When accounts ARE tagged by provider, an Awash payment may
-   * ONLY match Awash-tagged accounts — never a CBE/Dashen
-   * account, even if the holder name is similar.
-   *
-   * The all-accounts fallback exists ONLY for legacy setups
-   * where no account has a provider tag at all.
-   */
-  const anyTagged = paymentAccounts.some(
-    (account) =>
-      String(account.provider || "").trim() !== ""
-  );
-
-  const candidates = providerAccounts.length
-    ? providerAccounts
-    : anyTagged
-      ? []
-      : paymentAccounts;
+  const candidates = paymentAccounts;
 
   console.log(
     "[HolderMatch]",
     JSON.stringify({
-      providerFilter: bankName,
-
-      providerSpecificAccounts:
-        providerAccounts.length,
-
+      receiptProvider: bankName,
       candidateAccounts: candidates.length,
     })
   );
@@ -895,7 +871,7 @@ function matchAgainstPaymentAccounts(
 
 router.post(
   "/",
-  upload.single("image"),
+  uploadReceipt,
   async (req, res) => {
     try {
       const {

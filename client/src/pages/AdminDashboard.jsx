@@ -48,6 +48,16 @@ const RETRYABLE_VERIFY_STATUSES = new Set([
   "SITE_ERROR",
 ]);
 
+const VERIFICATION_PROVIDERS = [
+  "CBE",
+  "Telebirr",
+  "Awash",
+  "Dashen",
+  "Abyssinia",
+  "CBEBirr",
+  "MPesa",
+];
+
 function addTryAgain(message) {
   const value = String(message || "We couldn't complete this check.").trim();
 
@@ -684,7 +694,7 @@ export default function AdminDashboard() {
       const accounts = Array.isArray(data?.accounts) ? data.accounts : [];
       setVerifyAccounts(accounts);
       setVerifyBank((current) =>
-        accounts.some((a) => a.provider === current) ? current : (accounts[0]?.provider || "")
+        VERIFICATION_PROVIDERS.includes(current) ? current : VERIFICATION_PROVIDERS[0]
       );
     } catch (err) {
       setVerifyAccounts([]);
@@ -995,29 +1005,43 @@ export default function AdminDashboard() {
 
                   <form onSubmit={submitAdminVerify} className="space-y-4">
                     <div>
-                      <p className="text-xs font-medium text-ink/60 dark:text-mist mb-2">Provider</p>
+                      <p className="text-xs font-medium text-ink/60 dark:text-mist mb-1">Receipt source</p>
+                      <p className="text-xs text-ink/40 dark:text-mist mb-2">Choose the logo shown on the receipt. It may differ from the receiving bank.</p>
                       {verifyAccountsLoading && <p className="text-xs text-ink/30 dark:text-mist">Loading this client's payment accounts…</p>}
                       {!verifyAccountsLoading && verifyAccounts.length === 0 && (
                         <p className="text-xs text-alarm">This client has no payment accounts configured yet.</p>
                       )}
                       {!verifyAccountsLoading && verifyAccounts.length > 0 && (
                         <div className="flex flex-wrap gap-2">
-                          {verifyAccounts.map((account) => (
+                          {VERIFICATION_PROVIDERS.map((provider) => (
                             <button
-                              key={account._id}
+                              key={provider}
                               type="button"
-                              onClick={() => setVerifyBank(account.provider)}
-                              aria-label={account.provider}
-                              title={account.provider}
+                              onClick={() => setVerifyBank(provider)}
+                              aria-label={provider}
+                              title={provider}
                               className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                                verifyBank === account.provider
+                                verifyBank === provider
                                   ? "border-seal bg-seal/10 text-sealDark"
                                   : "border-black/10 dark:border-line text-ink/60 dark:text-mist hover:border-seal/40"
                               }`}
                             >
-                              <ProviderBadge provider={account.provider} showLabel={false} />
+                              <ProviderBadge provider={provider} showLabel={false} />
                             </button>
                           ))}
+                        </div>
+                      )}
+                      {!verifyAccountsLoading && verifyAccounts.length > 0 && (
+                        <div className="mt-3 rounded-xl border border-black/10 bg-paper/70 p-3 dark:border-line dark:bg-black/20">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-ink/40 dark:text-mist">Accepted receiving accounts</p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {verifyAccounts.map((account) => (
+                              <span key={account._id} className="inline-flex items-center gap-2 rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-xs dark:border-line dark:bg-white/5">
+                                <ProviderBadge provider={account.provider} showLabel={false} plain iconSize="h-5 w-5" />
+                                <span className="font-mono">{account.accountNumber}</span>
+                              </span>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>

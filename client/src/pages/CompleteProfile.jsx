@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import api from "../lib/api.js";
 import { useAuth } from "../context/AuthContext.jsx";
-import { authenticatedLanding } from "../lib/appSurface.js";
+import { authenticatedLanding, developerPortalUrl, isDeveloperSurface } from "../lib/appSurface.js";
 import Footer from "../components/Footer.jsx";
 import StyledSelect from "../components/StyledSelect.jsx";
 
@@ -50,7 +50,17 @@ export default function CompleteProfile() {
 
       updateUser(data.user);
 
-      nav(authenticatedLanding({ ...user, ...data.user, profileComplete: true }), { replace: true });
+      const completedUser = { ...user, ...data.user, profileComplete: true };
+      const developerIntent =
+        new URLSearchParams(window.location.search).get("surface") === "developer" ||
+        sessionStorage.getItem("developer_signup") === "1";
+
+      if (developerIntent && !isDeveloperSurface) {
+        window.location.replace(`${developerPortalUrl}/developers`);
+        return;
+      }
+
+      nav(developerIntent ? "/developers" : authenticatedLanding(completedUser), { replace: true });
     } catch (err) {
       setError(err.response?.data?.error || "Could not save your details");
     } finally {

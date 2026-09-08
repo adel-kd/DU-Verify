@@ -1,7 +1,9 @@
 const configuredSurface = String(import.meta.env.VITE_APP_SURFACE || '').toLowerCase();
-const isLocalDeveloperPreview =
-  ['localhost', '127.0.0.1'].includes(window.location.hostname) &&
-  window.location.pathname.startsWith('/developers');
+const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+const isLocalDeveloperPreview = isLocalHost && (
+  window.location.pathname.startsWith('/developers') ||
+  sessionStorage.getItem('developer_signup') === '1'
+);
 
 export const isDeveloperSurface =
   configuredSurface === 'developer' ||

@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
-import { authenticatedLanding } from "../lib/appSurface.js";
+import { authenticatedLanding, developerPortalUrl, isDeveloperSurface } from "../lib/appSurface.js";
 
 export default function AuthSuccess() {
   const { login } = useAuth();
@@ -30,7 +30,7 @@ export default function AuthSuccess() {
         return;
       }
 
-      const { token, user } = JSON.parse(
+      const { token, user, surface } = JSON.parse(
         decodeURIComponent(match[1])
       );
 
@@ -41,12 +41,25 @@ export default function AuthSuccess() {
 
       login(token, user);
 
+      if (surface === "developer") {
+        sessionStorage.setItem("developer_signup", "1");
+      }
+
       // Clean the fragment out of history.
       window.history.replaceState(null, "", "/auth/success");
 
-      const destination =
-        user.profileComplete === false
-          ? "/complete-profile"
+      if (surface === "developer" && !isDeveloperSurface) {
+        const path = user.profileComplete === false
+          ? "/complete-profile?surface=developer"
+          : "/developers";
+        window.location.replace(`${developerPortalUrl}${path}`);
+        return;
+      }
+
+      const destination = user.profileComplete === false
+        ? `/complete-profile${surface === "developer" ? "?surface=developer" : ""}`
+        : surface === "developer"
+          ? "/developers"
           : authenticatedLanding(user);
 
       nav(destination, { replace: true });

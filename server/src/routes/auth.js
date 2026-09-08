@@ -318,6 +318,7 @@ const FRONTEND_ORIGINS = [
   "http://127.0.0.1:5173",
   "http://127.0.0.1:4173",
   "https://developer-duverifay.vercel.app",
+  "https://dev.duverifay.com",
 ]
   .map(normalizeOrigin)
   .filter((origin, index, origins) => origin && origins.indexOf(origin) === index);
@@ -379,12 +380,28 @@ function secureStringEqual(left, right) {
   );
 }
 
-function createGoogleState(origin, nonce) {
+const DEVELOPER_FRONTEND_ORIGINS = new Set([
+  "http://localhost:5173",
+  "http://localhost:4173",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:4173",
+  "https://developer-duverifay.vercel.app",
+  "https://dev.duverifay.com",
+]);
+
+function googleAuthSurface(origin, requestedSurface) {
+  return requestedSurface === "developer" && DEVELOPER_FRONTEND_ORIGINS.has(origin)
+    ? "developer"
+    : "merchant";
+}
+
+function createGoogleState(origin, nonce, surface) {
   return jwt.sign(
     {
       type: "google_oauth",
       origin,
       nonce,
+      surface,
     },
     process.env.JWT_SECRET,
     {
@@ -404,10 +421,12 @@ function verifyGoogleState(req, res, next) {
     });
     const cookieNonce = parseCookie(req, GOOGLE_OAUTH_COOKIE);
     const origin = normalizeOrigin(payload.origin);
+    const surface = googleAuthSurface(origin, payload.surface);
 
     if (
       payload.type !== "google_oauth" ||
       !FRONTEND_ORIGINS.includes(origin) ||
+      payload.surface !== surface ||
       !secureStringEqual(payload.nonce, cookieNonce)
     ) {
       throw new Error("OAuth state did not match");
@@ -422,6 +441,7 @@ function verifyGoogleState(req, res, next) {
 
     req.googleFrontendOrigin = origin;
     req.googleCallbackUrl = callbackUrl;
+    req.googleAuthSurface = surface;
     return next();
   } catch (err) {
     console.error("[auth/google] invalid state:", err.message);
@@ -1916,10 +1936,11 @@ router.get(
     const origin = FRONTEND_ORIGINS.includes(requestedOrigin)
       ? requestedOrigin
       : DEFAULT_FRONTEND_ORIGIN;
+    const surface = googleAuthSurface(origin, req.query.surface);
 
     const callbackUrl = requestGoogleCallbackUrl(req);
     const nonce = crypto.randomBytes(32).toString("base64url");
-    const state = createGoogleState(origin, nonce);
+    const state = createGoogleState(origin, nonce, surface);
 
     res.cookie(GOOGLE_OAUTH_COOKIE, nonce, {
       httpOnly: true,
@@ -1974,7 +1995,7 @@ router.get(
           const safeUser = await publicUser(user);
 
           const payload = encodeURIComponent(
-            JSON.stringify({ token, user: safeUser })
+            JSON.stringify({ token, user: safeUser, surface: req.googleAuthSurface })
           );
 
           return res.redirect(

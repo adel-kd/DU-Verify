@@ -9,6 +9,7 @@ export default function CameraCapture({ onCapture }) {
   const [isCameraOn, setIsCameraOn] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState("");
+  const [isStarting, setIsStarting] = useState(false);
 
   const stopCamera = () => {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -58,17 +59,32 @@ export default function CameraCapture({ onCapture }) {
       return;
     }
 
+    setIsStarting(true);
+
     try {
       stopCamera();
 
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: {
-          facingMode: { ideal: "environment" },
-          width: { ideal: 1920 },
-          height: { ideal: 1440 },
-        },
-      });
+      let mediaStream;
+
+      try {
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1920 },
+            height: { ideal: 1440 },
+          },
+        });
+      } catch (preferredError) {
+        if (preferredError?.name !== "OverconstrainedError") throw preferredError;
+
+        // Older mobile browsers can reject ideal constraints even though a
+        // working camera is available. Retry with the broadest video request.
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: true,
+        });
+      }
 
       streamRef.current = mediaStream;
       setIsCameraOn(true);
@@ -82,6 +98,8 @@ export default function CameraCapture({ onCapture }) {
       } else {
         setCameraError("The camera could not start. Try the device camera instead.");
       }
+    } finally {
+      setIsStarting(false);
     }
   };
 
@@ -139,10 +157,11 @@ export default function CameraCapture({ onCapture }) {
         <button
           type="button"
           onClick={startCamera}
-          className="flex w-full items-center justify-center gap-2 rounded-xl border border-black/10 bg-white px-4 py-3 font-semibold text-ink transition hover:border-seal hover:text-sealDark dark:border-white/10 dark:bg-white/5 dark:text-white"
+          disabled={isStarting}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-black/10 bg-white px-4 py-3 font-semibold text-ink transition hover:border-seal hover:text-sealDark disabled:cursor-wait disabled:opacity-60 dark:border-white/10 dark:bg-white/5 dark:text-white"
         >
           <Camera size={17} aria-hidden="true" />
-          Use camera
+          {isStarting ? "Starting camera..." : "Use camera"}
         </button>
       ) : null}
       {cameraError && !isCameraOn && (

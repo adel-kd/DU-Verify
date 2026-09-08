@@ -34,6 +34,16 @@ const BANK_LABELS = {
   CBEBirr: "CBE Birr",
 };
 
+const VERIFICATION_PROVIDERS = [
+  "CBE",
+  "Telebirr",
+  "Awash",
+  "Dashen",
+  "Abyssinia",
+  "CBEBirr",
+  "MPesa",
+];
+
 
 /* ============================================================
    RESULT STATES
@@ -556,22 +566,6 @@ export default function Verify() {
     setBank,
   ] = useState("");
 
-  /*
-   * Provider whose payment information
-   * is currently being shown.
-   */
-  const [
-    activeAccountId,
-    setActiveAccountId,
-  ] = useState(null);
-
-  /*
-   * Mobile long-press support.
-   */
-  const longPressTimer =
-    useRef(null);
-
-
   /* ==========================================================
      FORM STATE
   ========================================================== */
@@ -677,18 +671,11 @@ export default function Verify() {
          * selection unnecessarily.
          */
         if (accounts.length > 0) {
-          setBank((current) => {
-            const stillExists =
-              accounts.some(
-                (account) =>
-                  account.provider ===
-                  current
-              );
-
-            return stillExists
+          setBank((current) =>
+            VERIFICATION_PROVIDERS.includes(current)
               ? current
-              : accounts[0].provider;
-          });
+              : VERIFICATION_PROVIDERS[0]
+          );
         } else {
           setBank("");
         }
@@ -766,6 +753,16 @@ export default function Verify() {
       return;
     }
 
+    if (!String(file.type || "").startsWith("image/")) {
+      setError("Choose an image from your camera, gallery, or computer.");
+      return;
+    }
+
+    if (file.size > 8 * 1024 * 1024) {
+      setError("The receipt image is larger than 8 MB. Choose a smaller image and try again.");
+      return;
+    }
+
     setFile(file);
 
     /*
@@ -838,6 +835,8 @@ export default function Verify() {
     const selectedFile =
       e.target.files?.[0];
 
+    e.target.value = "";
+
     if (!selectedFile) {
       return;
     }
@@ -851,27 +850,6 @@ export default function Verify() {
   /* ==========================================================
      PAYMENT ACCOUNT INTERACTION
   ========================================================== */
-
-  function startLongPress(accountId) {
-    clearTimeout(
-      longPressTimer.current
-    );
-
-    longPressTimer.current =
-      setTimeout(() => {
-        setActiveAccountId(
-          accountId
-        );
-      }, 400);
-  }
-
-
-  function cancelLongPress() {
-    clearTimeout(
-      longPressTimer.current
-    );
-  }
-
 
   function selectProvider(
     provider
@@ -887,10 +865,7 @@ export default function Verify() {
   }
 
 
-  function copyAccount(
-    accountId,
-    accountNumber
-  ) {
+  function copyAccount(accountNumber) {
     if (
       navigator.clipboard?.writeText &&
       accountNumber
@@ -899,10 +874,6 @@ export default function Verify() {
         accountNumber
       );
     }
-
-    setActiveAccountId(
-      accountId
-    );
   }
 
 
@@ -913,7 +884,7 @@ export default function Verify() {
   async function handleVerify() {
     if (!bank) {
       setError(
-        "Please select a registered payment provider."
+        "Please select the provider shown on the receipt."
       );
 
       return;
@@ -1111,13 +1082,6 @@ export default function Verify() {
     );
 
 
-  const selectedAccount =
-    paymentAccounts.find(
-      (account) =>
-        account.provider === bank
-    );
-
-
   /* ==========================================================
      RENDER
   ========================================================== */
@@ -1203,26 +1167,18 @@ export default function Verify() {
          
             ONE BOX:
             - provider selector
-            - payment account information
+            - receipt provider
+            - receiving accounts
         ====================================================== */}
 
         <section className="workflow-step">
 
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <span className="field-label">01 / Payment source</span>
-              <h2 className="mt-1.5 font-display text-lg font-semibold tracking-tight text-ink dark:text-white">Which logo is on the receipt?</h2>
-            </div>
-            {selectedAccount && (
-              <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-seal/10 px-2.5 py-1 text-[11px] font-bold text-sealDark dark:text-seal">
-                <Check size={13} aria-hidden="true" /> Selected
-              </span>
-            )}
-          </div>
+          <span className="field-label">01 / Receipt source</span>
+          <h2 className="mt-1.5 font-display text-lg font-semibold tracking-tight text-ink dark:text-white">Which logo is on the receipt?</h2>
 
 
           <p className="mt-1.5 text-xs leading-5 text-ink/45 dark:text-white/45">
-            Tap a logo to select it. Hold or hover to see the payment destination.
+            Choose the app or bank that issued the receipt. It can be different from the receiving bank.
           </p>
 
 
@@ -1236,7 +1192,7 @@ export default function Verify() {
 
               <span className="w-4 h-4 rounded-full border-2 border-ink/20 border-t-ink animate-spin" />
 
-              Loading payment providers...
+              Loading receiving accounts...
 
             </div>
 
@@ -1269,8 +1225,7 @@ export default function Verify() {
 
               <div className="mt-3 rounded-xl bg-ink/5 px-3 py-3 text-sm text-ink/50 dark:text-mist">
 
-                No payment providers have been
-                configured for this business yet.
+                No receiving accounts have been configured for this business yet.
 
               </div>
 
@@ -1284,162 +1239,57 @@ export default function Verify() {
           {!accountsLoading &&
             paymentAccounts.length > 0 && (
 
-              <div className="mt-4 flex flex-wrap gap-3" role="radiogroup" aria-label="Payment source">
-
-                {paymentAccounts.map(
-                  (account) => {
-
-                    const isSelected =
-                      bank ===
-                      account.provider;
-
-                    const isActive =
-                      activeAccountId ===
-                      account._id;
+              <>
+                <div className="mt-4 flex flex-wrap gap-3" role="radiogroup" aria-label="Receipt source">
+                  {VERIFICATION_PROVIDERS.map((provider) => {
+                    const isSelected = bank === provider;
 
                     return (
-                      <div
-                        key={
-                          account._id
-                        }
-                        className="relative"
-                        onMouseEnter={() =>
-                          setActiveAccountId(
-                            account._id
-                          )
-                        }
-                        onMouseLeave={() =>
-                          setActiveAccountId(
-                            (id) =>
-                              id ===
-                                account._id
-                                ? null
-                                : id
-                          )
-                        }
-                        onTouchStart={() =>
-                          startLongPress(
-                            account._id
-                          )
-                        }
-                        onTouchEnd={
-                          cancelLongPress
-                        }
-                        onTouchCancel={
-                          cancelLongPress
-                        }
+                      <button
+                        key={provider}
+                        type="button"
+                        role="radio"
+                        aria-checked={isSelected}
+                        aria-label={providerLabel(provider)}
+                        title={providerLabel(provider)}
+                        onClick={() => selectProvider(provider)}
+                        className={`relative flex h-[68px] w-[68px] items-center justify-center rounded-2xl border transition duration-200 ${isSelected
+                          ? "border-seal bg-seal/10 shadow-[0_10px_24px_-16px_rgba(18,167,131,0.9)] ring-2 ring-seal/20"
+                          : "border-black/10 bg-[#f7f8f4] text-ink/70 hover:-translate-y-0.5 hover:border-seal/50 hover:bg-white dark:border-white/10 dark:bg-white/5"
+                        }`}
                       >
-
-                        {/* =================================
-                            PROVIDER BUTTON
-
-                            ALSO SELECTS BANK
-                        ================================== */}
-
-                        <button
-                          type="button"
-                          role="radio"
-                          aria-checked={isSelected}
-                          aria-label={providerLabel(account.provider)}
-                          title={providerLabel(account.provider)}
-                          onClick={() =>
-                            selectProvider(
-                              account.provider
-                            )
-                          }
-                          className={`relative flex h-[68px] w-[68px] items-center justify-center rounded-2xl border transition duration-200 ${isSelected
-                            ? "border-seal bg-seal/10 shadow-[0_10px_24px_-16px_rgba(18,167,131,0.9)] ring-2 ring-seal/20"
-                            : "border-black/10 bg-[#f7f8f4] text-ink/70 hover:-translate-y-0.5 hover:border-seal/50 hover:bg-white dark:border-white/10 dark:bg-white/5"
-                            }`}
-                        >
-                          <ProviderBadge
-                            provider={account.provider}
-                            showLabel={false}
-                            plain
-                            iconSize="h-11 w-11"
-                          />
-                          {isSelected && (
-                            <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-seal text-white dark:border-[#17211d]">
-                              <Check size={11} strokeWidth={3} aria-hidden="true" />
-                            </span>
-                          )}
-
-                        </button>
-
-
-                        {/* =================================
-                            PAYMENT ACCOUNT POPUP
-                        ================================== */}
-
-                        {isActive && (
-
-                          <div
-                            className="absolute left-0 top-full z-30 mt-2 w-60 rounded-2xl border border-white/10 bg-[#13201b] p-4 text-paper shadow-2xl"
-                            onMouseEnter={() =>
-                              setActiveAccountId(
-                                account._id
-                              )
-                            }
-                          >
-
-                            <ProviderBadge
-                              provider={account.provider}
-                              showLabel={false}
-                              plain
-                              iconSize="h-9 w-9"
-                            />
-
-                            <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.15em] text-seal">Payment destination</p>
-
-
-                            <p className="font-mono text-sm mt-1 break-all">
-
-                              {account.accountNumber ||
-                                "Account number unavailable"}
-
-                            </p>
-
-
-                            {account.accountHolderName && (
-
-                              <p className="text-xs text-mist mt-0.5">
-
-                                {
-                                  account.accountHolderName
-                                }
-
-                              </p>
-
-                            )}
-
-
-                            {account.accountNumber && (
-
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  copyAccount(
-                                    account._id,
-                                    account.accountNumber
-                                  )
-                                }
-                                className="mt-2 text-xs bg-seal text-ink dark:text-paper font-semibold rounded-lg px-2.5 py-1"
-                              >
-                                Copy account
-                              </button>
-
-                            )}
-
-                          </div>
-
+                        <ProviderBadge provider={provider} showLabel={false} plain iconSize="h-11 w-11" />
+                        {isSelected && (
+                          <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-seal text-white dark:border-[#17211d]">
+                            <Check size={11} strokeWidth={3} aria-hidden="true" />
+                          </span>
                         )}
-
-                      </div>
+                      </button>
                     );
-                  }
-                )}
+                  })}
+                </div>
 
-              </div>
+                <div className="mt-5 border-t border-black/[0.07] pt-4 dark:border-white/10">
+                  <p className="field-label">Merchant receiving accounts</p>
+                  <p className="mt-1 text-xs leading-5 text-ink/45 dark:text-white/45">
+                    The confirmed receiver must match one of these accounts, even when the receipt comes from another provider.
+                  </p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {paymentAccounts.map((account) => (
+                      <div key={account._id} className="flex items-center gap-3 rounded-xl border border-black/10 bg-[#f7f8f4] p-3 dark:border-white/10 dark:bg-black/20">
+                        <ProviderBadge provider={account.provider} showLabel={false} plain iconSize="h-9 w-9" />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-mono text-sm text-ink dark:text-paper">{account.accountNumber}</p>
+                          <p className="truncate text-xs text-ink/45 dark:text-mist">{account.accountHolderName}</p>
+                        </div>
+                        <button type="button" onClick={() => copyAccount(account.accountNumber)} className="shrink-0 rounded-lg border border-seal/25 px-2.5 py-1 text-xs font-semibold text-sealDark transition hover:bg-seal/10 dark:text-seal">
+                          Copy
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
 
             )}
 

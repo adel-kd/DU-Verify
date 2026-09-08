@@ -14,6 +14,7 @@ const EMAIL_REGEX =
 
 async function findGoogleAuthBackend() {
   const origin = encodeURIComponent(window.location.origin);
+  const surface = isDeveloperSurface ? "&surface=developer" : "";
   const candidates = api.baseURLs || [];
 
   for (const baseURL of candidates) {
@@ -35,7 +36,7 @@ async function findGoogleAuthBackend() {
         throw new Error(`API health check returned ${response.status}`);
       }
 
-      return `${baseURL}/api/auth/google?origin=${origin}`;
+      return `${baseURL}/api/auth/google?origin=${origin}${surface}`;
     } catch {
       // Try the next configured backend only after this one is unavailable.
     } finally {
