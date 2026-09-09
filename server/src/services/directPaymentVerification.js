@@ -1,7 +1,10 @@
 const { extractReceiptData } = require("./ocr");
 const { decodeQrFromImage } = require("./qrDecode");
 const { verifyReceipt } = require("./veritas");
-const { holderNamesMatch } = require("../utils/receiverMatching");
+const {
+  accountNumbersMatch,
+  holderNamesMatch,
+} = require("../utils/receiverMatching");
 
 function normalizeAccount(value) {
   return String(value || "").replace(/\D/g, "");
@@ -9,12 +12,6 @@ function normalizeAccount(value) {
 
 function namesMatch(expectedValue, receivedValue) {
   return holderNamesMatch(expectedValue, receivedValue).matched;
-}
-
-function accountsMatch(expectedValue, receivedValue) {
-  const expected = normalizeAccount(expectedValue);
-  const received = normalizeAccount(receivedValue);
-  return Boolean(expected && received && expected === received);
 }
 
 function accountSuffix(provider, accountNumber) {
@@ -162,7 +159,10 @@ async function verifyDirectPayment({ file, account, expectedAmount }) {
       ? Math.abs(details.amount - expected) <= 0.01
       : false;
   const receiverAvailable = Boolean(details.receiverAccount || details.receiverName);
-  const accountNumberMatch = accountsMatch(account.accountNumber, details.receiverAccount);
+  const accountNumberMatch = accountNumbersMatch(
+    account.accountNumber,
+    details.receiverAccount
+  );
   const accountHolderMatch = namesMatch(account.accountHolderName, details.receiverName);
   const receiverMatches = accountNumberMatch || accountHolderMatch;
 

@@ -27,8 +27,15 @@ if (start === -1 || end === -1) {
   process.exit(1);
 }
 
-const { holderNamesMatch } = require('../src/utils/receiverMatching');
-const sandbox = { console, ocrTolerantNamesMatch: holderNamesMatch };
+const {
+  accountNumbersMatch: sharedAccountNumbersMatch,
+  holderNamesMatch,
+} = require('../src/utils/receiverMatching');
+const sandbox = {
+  console,
+  ocrTolerantNamesMatch: holderNamesMatch,
+  sharedAccountNumbersMatch,
+};
 vm.createContext(sandbox);
 vm.runInContext(source.slice(start, end), sandbox);
 
@@ -101,6 +108,7 @@ check("13 first+last when admin has first+middle+last (extra middle on receipt)"
 check("13b first+last when the configured legal name has five parts", ocrTolerantNamesMatch("ADEL KEDIR MOHAMMED ABDU ABRAR", "ADEL ABRAR").matched, true);
 check("14 formatted account spaces", matched(awashOnly, "01425 1781921700", null, "Awash"), true);
 check("15 safe OCR account substitution (O->0)", accountNumbersMatch("12340678", "1234O678"), true);
+check("15b masked account uses visible final four digits", accountNumbersMatch("014251781929571", "1****9571"), true);
 
 /* ============================================================
    NEGATIVE / SECURITY BOUNDARY CASES (16-25)
@@ -155,6 +163,7 @@ check("dash-formatted account equals plain", accountNumbersMatch("1234-5678-9012
 check("spaced account equals plain", accountNumbersMatch("1234 5678 9012", "123456789012"), true);
 check("no unrestricted fuzzy on digits", accountNumbersMatch("12345678", "12345679"), false);
 check("length difference is a mismatch", accountNumbersMatch("12345678", "1234567"), false);
+check("full accounts sharing last four remain different", accountNumbersMatch("111111119571", "222222229571"), false);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

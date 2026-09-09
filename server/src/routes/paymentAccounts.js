@@ -2,7 +2,10 @@ const express = require("express");
 const PaymentAccount = require("../models/PaymentAccount");
 const { requireAuth } = require("../middleware/auth");
 const { requireOwner } = require("../middleware/roleCheck");
-const { holderNamesMatch } = require("../utils/receiverMatching");
+const {
+  accountNumbersMatch,
+  holderNamesMatch,
+} = require("../utils/receiverMatching");
 
 const router = express.Router();
 
@@ -151,17 +154,10 @@ function paymentReceiverMatches({
   receivedAccountNumber,
   receivedReceiverName,
 }) {
-  const normalizedExpectedAccount =
-    normalizeAccountNumber(accountNumber);
-
-  const normalizedReceivedAccount =
-    normalizeAccountNumber(receivedAccountNumber);
-
-  const accountMatch =
-    Boolean(normalizedExpectedAccount) &&
-    Boolean(normalizedReceivedAccount) &&
-    normalizedExpectedAccount ===
-    normalizedReceivedAccount;
+  const accountMatch = accountNumbersMatch(
+    accountNumber,
+    receivedAccountNumber
+  );
 
   const nameMatch = nameMatches(
     accountHolderName,

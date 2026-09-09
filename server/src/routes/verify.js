@@ -12,6 +12,7 @@ const { verifyReceipt } = require("../services/veritas");
 const { decodeQrFromImage } = require("../services/qrDecode");
 const { extractNewToken } = require("../services/providers/cbe");
 const {
+  accountNumbersMatch: sharedAccountNumbersMatch,
   holderNamesMatch: ocrTolerantNamesMatch,
   normalizeHolderName: normalizeName,
 } = require("../utils/receiverMatching");
@@ -222,32 +223,17 @@ function namesMatch(expectedName, receivedName) {
 /**
  * Account number matching.
  *
- * Harmless formatting differences (spaces, dashes) are ignored
- * and safe OCR letter substitutions are normalized — but after
- * that the comparison is STRICTLY EXACT.
- *
- * No edit distance. No fuzzy matching. A single genuinely
- * changed digit is always a mismatch.
+ * Full numbers remain exact. Provider-masked values such as
+ * 1****9571 are compared using their visible final four digits.
  */
 function accountNumbersMatch(
   expectedAccount,
   receivedAccount
 ) {
-  const expected =
-    normalizeAccountNumberWithOcr(
-      expectedAccount
-    );
-
-  const received =
-    normalizeAccountNumberWithOcr(
-      receivedAccount
-    );
-
-  if (!expected || !received) {
-    return false;
-  }
-
-  return expected === received;
+  return sharedAccountNumbersMatch(
+    expectedAccount,
+    receivedAccount
+  );
 }
 
 /**

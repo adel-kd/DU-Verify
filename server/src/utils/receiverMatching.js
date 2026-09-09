@@ -11,6 +11,38 @@ function normalizeAccountDigits(value) {
   return String(value || "").replace(/\D/g, "");
 }
 
+function normalizeComparableAccountDigits(value) {
+  return String(value || "")
+    .replace(/[Oo]/g, "0")
+    .replace(/[Ss]/g, "5")
+    .replace(/[IiLl]/g, "1")
+    .replace(/[Bb]/g, "8")
+    .replace(/\D/g, "");
+}
+
+function accountNumbersMatch(expectedValue, receivedValue) {
+  const expected = normalizeComparableAccountDigits(expectedValue);
+  const received = normalizeComparableAccountDigits(receivedValue);
+  if (!expected || !received) return false;
+  if (expected === received) return true;
+
+  const hasMask = (value) => /[*xX\u2022\u25cf]/u.test(String(value || ""));
+  const maskedOrLastFourOnly =
+    hasMask(expectedValue) ||
+    hasMask(receivedValue) ||
+    (expected.length !== received.length &&
+      (expected.length === 4 || received.length === 4));
+
+  // Providers often expose values such as 1****9571. Only use suffix
+  // matching when masking is explicit or one side contains exactly four digits.
+  return Boolean(
+    maskedOrLastFourOnly &&
+      expected.length >= 4 &&
+      received.length >= 4 &&
+      expected.slice(-4) === received.slice(-4)
+  );
+}
+
 function collapseOcrCharacters(value) {
   return String(value || "")
     .replace(/[0o]/g, "0")
@@ -90,10 +122,7 @@ function matchReceiverExpectations({
   const hasAccount = Boolean(normalizeAccountDigits(expectedAccount));
   const hasHolder = Boolean(normalizeHolderName(expectedHolder));
   const accountMatched = hasAccount
-    ? Boolean(
-        normalizeAccountDigits(receivedAccount) &&
-        normalizeAccountDigits(expectedAccount) === normalizeAccountDigits(receivedAccount)
-      )
+    ? accountNumbersMatch(expectedAccount, receivedAccount)
     : null;
   const holderMatched = hasHolder
     ? holderNamesMatch(expectedHolder, receivedHolder).matched
@@ -109,6 +138,7 @@ function matchReceiverExpectations({
 }
 
 module.exports = {
+  accountNumbersMatch,
   holderNamesMatch,
   matchReceiverExpectations,
   normalizeAccountDigits,
