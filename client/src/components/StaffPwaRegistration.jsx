@@ -4,6 +4,7 @@ import { isDeveloperSurface } from "../lib/appSurface.js";
 
 const MANIFEST_ID = "du-verify-staff-manifest";
 const THEME_ID = "du-verify-staff-theme";
+const INSTALL_READY_EVENT = "du-verify-install-ready";
 
 function removeStaffMetadata() {
   document.getElementById(MANIFEST_ID)?.remove();
@@ -35,6 +36,19 @@ export default function StaffPwaRegistration() {
       return undefined;
     }
 
+    const captureInstallPrompt = (event) => {
+      event.preventDefault();
+      window.__duVerifyStaffInstallPrompt = event;
+      window.dispatchEvent(new Event(INSTALL_READY_EVENT));
+    };
+
+    const clearInstallPrompt = () => {
+      window.__duVerifyStaffInstallPrompt = null;
+    };
+
+    window.addEventListener("beforeinstallprompt", captureInstallPrompt);
+    window.addEventListener("appinstalled", clearInstallPrompt);
+
     let manifest = document.getElementById(MANIFEST_ID);
     if (!manifest) {
       manifest = document.createElement("link");
@@ -59,7 +73,10 @@ export default function StaffPwaRegistration() {
         .catch((error) => console.warn("[staff-pwa] registration failed", error));
     }
 
-    return undefined;
+    return () => {
+      window.removeEventListener("beforeinstallprompt", captureInstallPrompt);
+      window.removeEventListener("appinstalled", clearInstallPrompt);
+    };
   }, [enabled]);
 
   return null;

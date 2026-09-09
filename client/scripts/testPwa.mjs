@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 const manifest = JSON.parse(await readFile(new URL("../public/staff-manifest.webmanifest", import.meta.url), "utf8"));
 const worker = await readFile(new URL("../public/staff-sw.js", import.meta.url), "utf8");
 const registration = await readFile(new URL("../src/components/StaffPwaRegistration.jsx", import.meta.url), "utf8");
+const installer = await readFile(new URL("../src/components/InstallStaffApp.jsx", import.meta.url), "utf8");
 const html = await readFile(new URL("../index.html", import.meta.url), "utf8");
 
 assert.equal(manifest.start_url, "/verify?source=pwa");
@@ -13,6 +14,9 @@ assert(manifest.icons.some((icon) => icon.sizes === "512x512" && icon.purpose ==
 assert.match(worker, /url\.pathname\.startsWith\("\/api\/"\)/);
 assert.match(registration, /user\?\.role === "staff"/);
 assert.match(registration, /!isDeveloperSurface/);
+assert.match(registration, /__duVerifyStaffInstallPrompt/);
+assert.match(installer, /Install app or Add to Home screen/);
+assert.doesNotMatch(installer, /!installPrompt && !isIos/);
 assert(!html.includes("staff-manifest.webmanifest"));
 
 for (const icon of manifest.icons) {
