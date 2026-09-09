@@ -35,6 +35,7 @@ const {
   matchAgainstPaymentAccounts,
   ocrTolerantNamesMatch,
   accountNumbersMatch,
+  paymentAccountsForProvider,
 } = sandbox;
 
 let pass = 0;
@@ -117,6 +118,17 @@ check("24 cross-provider receipt with wrong receiver", matched(cbeOnly, null, "A
 check("25 intentionally similar but different names", ocrTolerantNamesMatch("ADEL KEDIR ABRAR", "ADELIE KEDIR ABARA").matched, false);
 check("26 Telebirr receipt paid to Awash account", matched(awashOnly, "014251781921700", "ADEL KEDIR ABRAR", "Telebirr"), true);
 check("27 Awash receipt paid to CBE account by holder", matched(cbeOnly, null, "MOHAMMED ALI", "Awash"), true);
+check("28 matcher continues until a later configured account matches", matched(adminAccounts, "1000123456789", null, "Telebirr"), true);
+check("29 no configured account matches the confirmed receiver", matched(adminAccounts, "7777777777777", "SARA BEKELE", "Telebirr"), false);
+
+/* ============================================================
+   CONFIGURED RECEIPT PROVIDERS
+============================================================ */
+
+console.log("\n--- CONFIGURED PROVIDERS ---");
+
+check("configured CBE provider has one eligible account", paymentAccountsForProvider(adminAccounts, "CBE").length, 1);
+check("unconfigured Telebirr provider has no eligible account", paymentAccountsForProvider(adminAccounts, "Telebirr").length, 0);
 
 /* ============================================================
    OR-LOGIC TRUTH TABLE

@@ -1,10 +1,12 @@
+import { useEffect, useState } from "react";
+
 const PROVIDER_META = {
   CBE: { label: "CBE", icon: "/cbe.png" },
   Telebirr: { label: "Telebirr", icon: "/telebirr.png" },
-  Dashen: { label: "Dashen", icon: "/.png", darkSurface: true },
+  Dashen: { label: "Dashen", icon: "/dashen.png", darkSurface: true },
   Abyssinia: { label: "Abyssinia", icon: "/abyssinia.png" },
   CBEBirr: { label: "CBE Birr", icon: "/cbebirr.png" },
-  MPesa: { label: "M-Pesa", icon: null, fallback: "MP" },
+  MPesa: { label: "M-Pesa", icon: "/mpesa.svg", fallback: "MP" },
   Awash: { label: "Awash", icon: "/awash.png" },
 };
 
@@ -26,22 +28,29 @@ export default function ProviderBadge({
   iconSize = "h-7 w-7",
 }) {
   const meta = getProviderMeta(provider);
+  const [iconFailed, setIconFailed] = useState(false);
+
+  useEffect(() => {
+    setIconFailed(false);
+  }, [meta.icon]);
 
   return (
     <span
       className={`inline-flex items-center gap-2 ${className}`}
     >
       <span
-        className={`inline-flex ${iconSize} items-center justify-center overflow-hidden rounded-xl ${meta.darkSurface ? "bg-[#13201b] p-1" : plain ? "border-0 bg-transparent" : `border ${active ? "border-seal bg-seal/10" : "border-black/10 bg-white dark:border-line dark:bg-[#111]"}`} `}
+        className={`inline-flex ${iconSize} shrink-0 items-center justify-center overflow-hidden rounded-xl p-1 ${meta.darkSurface ? "bg-[#13201b] ring-1 ring-white/15" : active ? "bg-white ring-1 ring-seal/40" : "bg-white ring-1 ring-black/10 shadow-sm"} ${plain ? "" : "border border-black/5"}`}
       >
-        {meta.icon ? (
+        {meta.icon && !iconFailed ? (
           <img
             src={meta.icon}
             alt=""
             className="h-full w-full object-contain"
+            loading="eager"
+            onError={() => setIconFailed(true)}
           />
         ) : (
-          <span className="font-display text-xs font-bold uppercase tracking-tight text-ink/60 dark:text-mist">
+          <span className={`font-display text-xs font-bold uppercase tracking-tight ${meta.darkSurface ? "text-white" : "text-ink/70"}`}>
             {meta.fallback || meta.label.slice(0, 2)}
           </span>
         )}

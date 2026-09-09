@@ -234,7 +234,8 @@ function paymentReceiverMatches({
 ============================================================ */
 
 // Owner:
-//   sees every account, enabled and disabled.
+//   sees every account, enabled and disabled, unless this is a
+//   verification request.
 //
 // Staff:
 //   sees only enabled accounts.
@@ -243,7 +244,8 @@ function paymentReceiverMatches({
 //   sees every account, same as the owner would - they need
 //   the full picture to run a check for that client.
 //
-// Disabled accounts are never returned to staff.
+// Disabled accounts are never returned to staff or to any
+// verification screen.
 router.get("/", async (req, res) => {
   try {
     const businessId = businessIdFor(req);
@@ -257,7 +259,13 @@ router.get("/", async (req, res) => {
       });
     }
 
-    if (req.user.role === "owner" || req.user.role === "admin") {
+    const forVerification =
+      req.query.forVerification === "true";
+
+    if (
+      !forVerification &&
+      (req.user.role === "owner" || req.user.role === "admin")
+    ) {
       const accounts =
         await PaymentAccount.find({
           businessId,

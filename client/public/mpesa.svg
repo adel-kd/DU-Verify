@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 64" role="img" aria-labelledby="title">
+  <title id="title">M-Pesa</title>
+  <rect width="180" height="64" rx="12" fill="#fff"/>
+  <path d="M15 48 24 15h11l4 17 13-17h12L55 48H44l9-17-14 17h-8l-3-17-4 17Z" fill="#d71920"/>
+  <text x="69" y="42" fill="#168447" font-family="Arial, sans-serif" font-size="26" font-weight="700" letter-spacing="-1">PESA</text>
+</svg>

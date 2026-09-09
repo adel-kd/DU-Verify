@@ -691,11 +691,22 @@ export default function AdminDashboard() {
     }
     setVerifyAccountsLoading(true);
     try {
-      const { data } = await api.get("/payment-accounts", { params: { businessId } });
-      const accounts = Array.isArray(data?.accounts) ? data.accounts : [];
+      const { data } = await api.get("/payment-accounts", {
+        params: { businessId, forVerification: true },
+      });
+      const accounts = Array.isArray(data?.accounts)
+        ? data.accounts.filter(
+            (account) =>
+              account?.enabled !== false &&
+              VERIFICATION_PROVIDERS.includes(account?.provider)
+          )
+        : [];
+      const configuredProviders = VERIFICATION_PROVIDERS.filter((provider) =>
+        accounts.some((account) => account.provider === provider)
+      );
       setVerifyAccounts(accounts);
       setVerifyBank((current) =>
-        VERIFICATION_PROVIDERS.includes(current) ? current : VERIFICATION_PROVIDERS[0]
+        configuredProviders.includes(current) ? current : configuredProviders[0] || ""
       );
     } catch (err) {
       setVerifyAccounts([]);
@@ -762,6 +773,9 @@ export default function AdminDashboard() {
     : businesses;
 
   const verifySelectedBusiness = businesses.find((b) => b._id === verifyBusinessId) || null;
+  const configuredVerifyProviders = VERIFICATION_PROVIDERS.filter((provider) =>
+    verifyAccounts.some((account) => account.provider === provider)
+  );
 
   return (
     <div className="h-screen bg-paper text-ink dark:bg-ink dark:text-paper flex flex-col overflow-hidden">
@@ -1002,7 +1016,7 @@ export default function AdminDashboard() {
                       )}
                       {!verifyAccountsLoading && verifyAccounts.length > 0 && (
                         <div className="flex flex-wrap gap-2">
-                          {VERIFICATION_PROVIDERS.map((provider) => (
+                          {configuredVerifyProviders.map((provider) => (
                             <button
                               key={provider}
                               type="button"
@@ -1015,7 +1029,7 @@ export default function AdminDashboard() {
                                   : "border-black/10 dark:border-line text-ink/60 dark:text-mist hover:border-seal/40"
                               }`}
                             >
-                              <ProviderBadge provider={provider} showLabel={false} />
+                              <ProviderBadge provider={provider} showLabel={false} plain iconSize="h-8 w-12" />
                             </button>
                           ))}
                         </div>
@@ -1026,8 +1040,11 @@ export default function AdminDashboard() {
                           <div className="mt-2 flex flex-wrap gap-2">
                             {verifyAccounts.map((account) => (
                               <span key={account._id} className="inline-flex items-center gap-2 rounded-lg border border-black/10 bg-white px-2.5 py-1.5 text-xs dark:border-line dark:bg-white/5">
-                                <ProviderBadge provider={account.provider} showLabel={false} plain iconSize="h-5 w-5" />
-                                <span className="font-mono">{account.accountNumber}</span>
+                                <ProviderBadge provider={account.provider} showLabel={false} plain iconSize="h-8 w-12" />
+                                <span className="min-w-0">
+                                  <span className="block font-mono">{account.accountNumber}</span>
+                                  <span className="block truncate text-[10px] text-ink/45 dark:text-mist">{account.accountHolderName}</span>
+                                </span>
                               </span>
                             ))}
                           </div>

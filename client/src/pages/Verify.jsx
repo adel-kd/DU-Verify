@@ -641,7 +641,12 @@ export default function Verify() {
       try {
         const { data } =
           await api.get(
-            "/payment-accounts"
+            "/payment-accounts",
+            {
+              params: {
+                forVerification: true,
+              },
+            }
           );
 
         if (cancelled) {
@@ -657,8 +662,23 @@ export default function Verify() {
          */
         const accounts =
           Array.isArray(data?.accounts)
-            ? data.accounts
+            ? data.accounts.filter(
+                (account) =>
+                  account?.enabled !== false &&
+                  VERIFICATION_PROVIDERS.includes(
+                    account?.provider
+                  )
+              )
             : [];
+
+        const configuredProviders =
+          VERIFICATION_PROVIDERS.filter(
+            (provider) =>
+              accounts.some(
+                (account) =>
+                  account.provider === provider
+              )
+          );
 
         setPaymentAccounts(
           accounts
@@ -671,11 +691,11 @@ export default function Verify() {
          * Don't overwrite an existing
          * selection unnecessarily.
          */
-        if (accounts.length > 0) {
+        if (configuredProviders.length > 0) {
           setBank((current) =>
-            VERIFICATION_PROVIDERS.includes(current)
+            configuredProviders.includes(current)
               ? current
-              : VERIFICATION_PROVIDERS[0]
+              : configuredProviders[0]
           );
         } else {
           setBank("");
@@ -710,6 +730,15 @@ export default function Verify() {
       cancelled = true;
     };
   }, []);
+
+  const configuredProviders =
+    VERIFICATION_PROVIDERS.filter(
+      (provider) =>
+        paymentAccounts.some(
+          (account) =>
+            account.provider === provider
+        )
+    );
 
 
   /* ==========================================================
@@ -1245,7 +1274,7 @@ export default function Verify() {
 
               <>
                 <div className="mt-4 flex flex-wrap gap-3" role="radiogroup" aria-label="Receipt source">
-                  {VERIFICATION_PROVIDERS.map((provider) => {
+                  {configuredProviders.map((provider) => {
                     const isSelected = bank === provider;
 
                     return (
@@ -1257,12 +1286,12 @@ export default function Verify() {
                         aria-label={providerLabel(provider)}
                         title={providerLabel(provider)}
                         onClick={() => selectProvider(provider)}
-                        className={`relative flex h-[68px] w-[68px] items-center justify-center rounded-2xl border transition duration-200 ${isSelected
+                        className={`relative flex h-[72px] w-[92px] items-center justify-center rounded-2xl border transition duration-200 ${isSelected
                           ? "border-seal bg-seal/10 shadow-[0_10px_24px_-16px_rgba(18,167,131,0.9)] ring-2 ring-seal/20"
                           : "border-black/10 bg-[#f7f8f4] text-ink/70 hover:-translate-y-0.5 hover:border-seal/50 hover:bg-white dark:border-white/10 dark:bg-white/5"
                         }`}
                       >
-                        <ProviderBadge provider={provider} showLabel={false} plain iconSize="h-11 w-11" />
+                        <ProviderBadge provider={provider} showLabel={false} plain iconSize="h-12 w-[72px]" />
                         {isSelected && (
                           <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-seal text-white dark:border-[#17211d]">
                             <Check size={11} strokeWidth={3} aria-hidden="true" />
@@ -1281,7 +1310,7 @@ export default function Verify() {
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
                     {paymentAccounts.map((account) => (
                       <div key={account._id} className="flex items-center gap-3 rounded-xl border border-black/10 bg-[#f7f8f4] p-3 dark:border-white/10 dark:bg-black/20">
-                        <ProviderBadge provider={account.provider} showLabel={false} plain iconSize="h-9 w-9" />
+                        <ProviderBadge provider={account.provider} showLabel={false} plain iconSize="h-10 w-14" />
                         <div className="min-w-0 flex-1">
                           <p className="truncate font-mono text-sm text-ink dark:text-paper">{account.accountNumber}</p>
                           <p className="truncate text-xs text-ink/45 dark:text-mist">{account.accountHolderName}</p>

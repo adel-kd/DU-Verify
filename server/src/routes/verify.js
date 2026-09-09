@@ -865,6 +865,16 @@ function matchAgainstPaymentAccounts(
   };
 }
 
+function paymentAccountsForProvider(
+  paymentAccounts,
+  provider
+) {
+  return paymentAccounts.filter(
+    (account) =>
+      account.provider === provider
+  );
+}
+
 /* ============================================================
    POST /api/verify
 ============================================================ */
@@ -1126,6 +1136,26 @@ router.post(
         });
       }
 
+      /*
+       * The receipt source must be one of this business's enabled
+       * providers. This server-side guard prevents a stale client or
+       * direct API request from running an unconfigured provider check.
+       */
+      const providerPaymentAccounts =
+        paymentAccountsForProvider(
+          paymentAccounts,
+          bankName
+        );
+
+      if (providerPaymentAccounts.length === 0) {
+        return res.status(400).json({
+          error:
+            "This payment provider is not enabled for this business.",
+          code:
+            "PROVIDER_NOT_CONFIGURED",
+        });
+      }
+
       console.log(
         "[verify] loaded all enabled payment accounts:",
         paymentAccounts.map(
@@ -1143,7 +1173,7 @@ router.post(
       );
 
       console.log(
-        `[verify] loaded ${paymentAccounts.length} configured ${bankName} payment account(s)`
+        `[verify] loaded ${providerPaymentAccounts.length} enabled ${bankName} payment account(s)`
       );
 
       /* ========================================================
@@ -1591,13 +1621,15 @@ router.post(
       */
 
       /*
-       * Build suffixes for every configured account.
+       * Build suffixes only for accounts configured under the receipt
+       * provider. Provider lookup is step one; receiver matching against
+       * every enabled business account remains a separate step below.
        *
        * This is useful for providers such as CBE/Abyssinia
        * that may need account suffix information.
        */
       const accountSuffixes =
-        paymentAccounts
+        providerPaymentAccounts
           .map(
             (account) =>
               account.accountSuffix ||
@@ -1645,11 +1677,12 @@ router.post(
               : undefined,
 
           /*
-           * Full configured accounts are passed for
-           * providers that need them.
+           * Only this provider's configured accounts are passed to the
+           * provider adapter. Cross-provider receiver matching happens
+           * after the provider confirms the transaction.
            */
           paymentAccounts:
-            paymentAccounts.map(
+            providerPaymentAccounts.map(
               (account) => ({
                 accountNumber:
                   account.accountNumber,
