@@ -102,6 +102,30 @@ export default function DeveloperDocs({ base, config }) {
   }, null, 2);
   const balanceExample = `curl '${base}/balance' \\
   -H "Authorization: Bearer $DU_API_KEY"`;
+  const nodeExample = `import crypto from 'node:crypto';
+
+// Save idempotencyKey with your own order/payment record.
+// Call without one for a new lookup; pass the saved one to retry it.
+export async function verifyPayment(payment, idempotencyKey = crypto.randomUUID()) {
+  const response = await fetch('${base}/verify', {
+    method: 'POST',
+    headers: {
+      Authorization: \`Bearer \${process.env.DU_API_KEY}\`,
+      'Content-Type': 'application/json',
+      'Idempotency-Key': idempotencyKey,
+    },
+    body: JSON.stringify(payment),
+  });
+
+  return { idempotencyKey, result: await response.json() };
+}
+
+// New customer payment: a new UUID is created automatically.
+const firstAttempt = await verifyPayment(payment);
+await savePayment({ ...payment, idempotencyKey: firstAttempt.idempotencyKey });
+
+// Timeout or network error: retry with the SAME saved key.
+const retry = await verifyPayment(payment, savedPayment.idempotencyKey);`;
 
   return <article className="overflow-hidden rounded-[28px] border border-black/10 bg-white shadow-[0_28px_80px_-54px_rgba(16,25,20,0.55)]">
     <header className="border-b border-black/10 bg-[#eef2ec] px-6 py-8 sm:px-9 sm:py-10">
@@ -128,6 +152,15 @@ export default function DeveloperDocs({ base, config }) {
           <p className="mt-3 max-w-3xl text-sm leading-6 text-black/60">Send JSON with a unique order-based Idempotency-Key. Receipt image uploads and OCR belong to the merchant app, not this server API.</p>
         </div>
         <CodeBoard label="cURL / verification request" code={curlExample} />
+      </section>
+
+      <section className="space-y-5">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-black/40">Idempotency / Node.js</p>
+          <h3 className="mt-2 font-display text-2xl font-semibold">Generate it for them</h3>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-black/60">Use this server-side helper in your integration. It makes a new key for a new payment and returns it so you can save it with your order. On a retry, pass the saved key back in unchanged.</p>
+        </div>
+        <CodeBoard label="Node.js / safe verification helper" code={nodeExample} />
       </section>
 
       <section>
