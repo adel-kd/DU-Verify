@@ -15,6 +15,7 @@ const { requireAuth } = require("../middleware/auth");
 const { requireOwner } = require("../middleware/roleCheck");
 const { validateRegistrationEmail } = require("../services/emailValidation");
 const { sendVerificationEmail, sendOtpEmail } = require("../services/email");
+const { directGoogleAuthStartUrl } = require("../services/googleOAuthRouting");
 const {
   normalizeEthiopianPhone,
   phoneConditions,
@@ -344,7 +345,7 @@ const GOOGLE_CALLBACK_URLS = [
 const GOOGLE_CALLBACK_URL =
   GOOGLE_CALLBACK_URLS[0] || "http://localhost:5000/api/auth/google/callback";
 
-function requestGoogleCallbackUrl(req) {
+function requestPublicOrigin(req) {
   const forwardedProtocol = String(req.get("x-forwarded-proto") || "")
     .split(",")[0]
     .trim();
@@ -355,8 +356,14 @@ function requestGoogleCallbackUrl(req) {
     .trim();
   const host = forwardedHost || req.get("host");
 
+  return normalizeOrigin(`${protocol}://${host}`);
+}
+
+function requestGoogleCallbackUrl(req) {
+  const publicOrigin = requestPublicOrigin(req);
+
   const requestedUrl = normalizeCallbackUrl(
-    `${protocol}://${host}/api/auth/google/callback`
+    `${publicOrigin}/api/auth/google/callback`
   );
 
   return GOOGLE_CALLBACK_URLS.includes(requestedUrl)
@@ -1979,6 +1986,17 @@ router.get(
     const surface = googleAuthSurface(origin, req.query.surface);
 
     const callbackUrl = requestGoogleCallbackUrl(req);
+    const directStartUrl = directGoogleAuthStartUrl({
+      requestOrigin: requestPublicOrigin(req),
+      callbackUrl,
+      frontendOrigin: origin,
+      surface,
+    });
+
+    if (directStartUrl) {
+      return res.redirect(302, directStartUrl);
+    }
+
     const nonce = crypto.randomBytes(32).toString("base64url");
     const state = createGoogleState(origin, nonce, surface);
 
