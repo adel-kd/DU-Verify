@@ -1,34 +1,14 @@
 const { extractReceiptData } = require("./ocr");
 const { decodeQrFromImage } = require("./qrDecode");
 const { verifyReceipt } = require("./veritas");
+const { holderNamesMatch } = require("../utils/receiverMatching");
 
 function normalizeAccount(value) {
   return String(value || "").replace(/\D/g, "");
 }
 
-function normalizeName(value) {
-  return String(value || "")
-    .normalize("NFKC")
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function namesMatch(expectedValue, receivedValue) {
-  const expected = normalizeName(expectedValue);
-  const received = normalizeName(receivedValue);
-  if (!expected || !received) return false;
-  if (expected === received) return true;
-
-  const expectedParts = expected.split(" ");
-  const receivedParts = received.split(" ");
-  if (expectedParts.length < 2 || receivedParts.length < 2) return false;
-
-  return (
-    expectedParts[0] === receivedParts[0] &&
-    expectedParts.at(-1) === receivedParts.at(-1)
-  );
+  return holderNamesMatch(expectedValue, receivedValue).matched;
 }
 
 function accountsMatch(expectedValue, receivedValue) {

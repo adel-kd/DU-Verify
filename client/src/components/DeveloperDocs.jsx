@@ -51,7 +51,7 @@ function CodeBoard({ label, code }) {
 
 const statusRows = [
   ['bg-seal', 'Green', 'VALID', 'Receipt found and every merchant check you supplied passed. Safe to fulfill.'],
-  ['bg-[#e4b83f]', 'Yellow', 'AMOUNT_MISMATCH / RECEIVER_MISMATCH', 'The receipt exists, but its amount, receiver account, or holder name does not match.'],
+  ['bg-[#e4b83f]', 'Yellow', 'AMOUNT_MISMATCH / RECEIVER_MISMATCH', 'The receipt exists, but its amount differs or neither supplied receiver field matches.'],
   ['bg-alarm', 'Red', 'NOT_VERIFIED / ALREADY_USED', 'The provider did not confirm the receipt, or this receipt was used before. Do not fulfill.'],
   ['bg-black', 'Black', 'PROVIDER_UNAVAILABLE / OCR_FAILED / SITE_ERROR', 'A technical check failed. Show Please try again and offer manual reference entry when relevant.'],
 ];
@@ -149,7 +149,7 @@ const retry = await verifyPayment(payment, savedPayment.idempotencyKey);`;
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-black/40">02 / Verification</p>
           <h3 className="mt-2 font-display text-2xl font-semibold">POST /verify</h3>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-black/60">Send JSON with a unique order-based Idempotency-Key. Receipt image uploads and OCR belong to the merchant app, not this server API.</p>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-black/60">Send JSON with a unique order-based Idempotency-Key. If you supply both receiver account and holder name, a match on either one is enough. Receipt image uploads and OCR belong to the merchant app, not this server API.</p>
         </div>
         <CodeBoard label="cURL / verification request" code={curlExample} />
       </section>
@@ -205,6 +205,7 @@ const retry = await verifyPayment(payment, savedPayment.idempotencyKey);`;
       <section className="grid gap-7 border-t border-black/10 pt-10 md:grid-cols-2">
         <div><h3 className="font-semibold">Billing and duplicates</h3><p className="mt-3 text-sm leading-6 text-black/60">Completed provider answers cost {config?.settings.cost ?? 1} DU PT. Validation, authentication, rate-limit, and provider failures are free. A previously confirmed reference returns <code>ALREADY_USED</code> without another charge.</p></div>
         <div><h3 className="font-semibold">Retries and limits</h3><p className="mt-3 text-sm leading-6 text-black/60">Retry an interrupted request with the same Idempotency-Key and identical body. Use a new key only for a fresh lookup. Current limit: {config?.settings.requestsPerMinute ?? '--'} requests per minute. HTTP 429 includes Retry-After.</p></div>
+        <div><h3 className="font-semibold">Receiver matching</h3><p className="mt-3 text-sm leading-6 text-black/60">Account number OR holder name is sufficient. Holder names ignore case and spacing, tolerate common OCR errors, and accept first-and-last names when the confirmed receipt contains a longer full name.</p></div>
         <div><h3 className="font-semibold">Provider notes</h3><p className="mt-3 text-sm leading-6 text-black/60">CBE Birr requires <code>phoneNumber</code>. Abyssinia requires <code>receiverAccountNumber</code> for its last-five-digit check. For Dashen, send the Transaction Reference, not the Transfer Reference.</p></div>
         <div><h3 className="font-semibold">HTTP responses</h3><p className="mt-3 text-sm leading-6 text-black/60">400 invalid input, 401 invalid key, 402 top-up required, 403 disabled access, 409 idempotency conflict, 429 rate limit, 503 unavailable service, and 500 unexpected error.</p></div>
       </section>

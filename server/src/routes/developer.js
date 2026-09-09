@@ -12,6 +12,7 @@ const Ledger = require('../models/BillingLedger');
 const Audit = require('../models/AdminAction');
 const { verifyReceipt } = require('../services/veritas');
 const { extractNewToken } = require('../services/providers/cbe');
+const { matchReceiverExpectations } = require('../utils/receiverMatching');
 const router = express.Router();
 const digest = value => crypto.createHash('sha256').update(value).digest('hex');
 const providers = ['CBE', 'Telebirr', 'Dashen', 'Abyssinia', 'CBEBirr', 'MPesa', 'Awash'];
@@ -19,7 +20,6 @@ const fail = (status, message) => Object.assign(new Error(message), { status });
 const wrap = handler => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 
 const normalizeAccount = value => String(value || '').replace(/\D/g, '');
-const normalizeName = value => String(value || '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
 const badgeFor = status => ({
   VALID: 'green',
   AMOUNT_MISMATCH: 'yellow',
@@ -53,9 +53,16 @@ function outcomeFor(status, body, payload, duplicate = false) {
   const hasHolder = Boolean(payload.receiverAccountHolderName);
   const hasMerchantChecks = hasAmount || hasAccount || hasHolder;
   const amountMatched = hasAmount ? Number.isFinite(details.amount) && Math.abs(details.amount - payload.expectedAmount) <= 0.01 : null;
-  const accountMatched = hasAccount ? normalizeAccount(details.receiverAccountNumber) === normalizeAccount(payload.receiverAccountNumber) : null;
-  const holderMatched = hasHolder ? normalizeName(details.receiverAccountHolderName) === normalizeName(payload.receiverAccountHolderName) : null;
-  const receiverMatched = hasAccount || hasHolder ? (accountMatched !== false && holderMatched !== false) : null;
+  const {
+    accountMatched,
+    holderMatched,
+    receiverMatched,
+  } = matchReceiverExpectations({
+    expectedAccount: payload.receiverAccountNumber,
+    expectedHolder: payload.receiverAccountHolderName,
+    receivedAccount: details.receiverAccountNumber,
+    receivedHolder: details.receiverAccountHolderName,
+  });
   let outcome = status;
   if (status === 'VALID' && amountMatched === false) outcome = 'AMOUNT_MISMATCH';
   if ((status === 'VALID' || outcome === 'AMOUNT_MISMATCH') && receiverMatched === false) outcome = 'RECEIVER_MISMATCH';

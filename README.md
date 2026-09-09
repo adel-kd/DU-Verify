@@ -73,7 +73,9 @@ official receipt link, normally through its QR code.
   policy.
 - Each request uses `Authorization: Bearer <api-key>` and a unique
   `Idempotency-Key`.
-- Receiver account number, receiver name, and expected amount are optional.
+- Receiver account number, receiver name, and expected amount are optional. If
+  both receiver fields are supplied, matching either the account number OR the
+  holder name is sufficient. Names accept first-and-last versus full-name forms.
 - When receiver expectations are supplied, the response returns the verification
   outcome/badge without exposing the full receipt. Without them, the full
   confirmed receipt details are returned.

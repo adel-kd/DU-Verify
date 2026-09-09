@@ -27,7 +27,8 @@ if (start === -1 || end === -1) {
   process.exit(1);
 }
 
-const sandbox = { console };
+const { holderNamesMatch } = require('../src/utils/receiverMatching');
+const sandbox = { console, ocrTolerantNamesMatch: holderNamesMatch };
 vm.createContext(sandbox);
 vm.runInContext(source.slice(start, end), sandbox);
 
@@ -97,6 +98,7 @@ check("10 extra spaces", matched(awashOnly, null, "ADEL   KEDIR  ABRAR", "Awash"
 check("11 punctuation/hyphen differences", ocrTolerantNamesMatch("ADEL KEDIR ABRAR", "Adel Kedir-Abrar.").matched, true);
 check("12 missing middle name", matched(awashOnly, null, "ADEL ABRAR", "Awash"), true);
 check("13 first+last when admin has first+middle+last (extra middle on receipt)", ocrTolerantNamesMatch("ADEL ABRAR", "ADEL KEDIR ABRAR").matched, true);
+check("13b first+last when the configured legal name has five parts", ocrTolerantNamesMatch("ADEL KEDIR MOHAMMED ABDU ABRAR", "ADEL ABRAR").matched, true);
 check("14 formatted account spaces", matched(awashOnly, "01425 1781921700", null, "Awash"), true);
 check("15 safe OCR account substitution (O->0)", accountNumbersMatch("12340678", "1234O678"), true);
 

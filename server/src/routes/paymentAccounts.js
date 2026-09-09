@@ -2,6 +2,7 @@ const express = require("express");
 const PaymentAccount = require("../models/PaymentAccount");
 const { requireAuth } = require("../middleware/auth");
 const { requireOwner } = require("../middleware/roleCheck");
+const { holderNamesMatch } = require("../utils/receiverMatching");
 
 const router = express.Router();
 
@@ -82,27 +83,6 @@ function normalizeAccountNumber(accountNumber) {
 
 // Makes names easier to compare.
 //
-// Handles:
-//
-// JOHN DOE
-// john doe
-// John   Doe
-// John-Doe
-// John, Doe
-//
-// All normalize consistently.
-//
-// Unicode letters are preserved so names aren't limited
-// to English characters.
-function normalizeName(name) {
-  return String(name || "")
-    .normalize("NFKC")
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 /* ============================================================
    NAME MATCHING
 ============================================================ */
@@ -149,41 +129,7 @@ function normalizeName(name) {
 // "Michael Doe"
 // -> false
 function nameMatches(expectedName, receivedName) {
-  const expected = normalizeName(expectedName);
-  const received = normalizeName(receivedName);
-
-  if (!expected || !received) {
-    return false;
-  }
-
-  // Exact normalized match.
-  if (expected === received) {
-    return true;
-  }
-
-  const expectedParts = expected.split(" ");
-  const receivedParts = received.split(" ");
-
-  // We need at least first + last.
-  if (
-    expectedParts.length < 2 ||
-    receivedParts.length < 2
-  ) {
-    return false;
-  }
-
-  const expectedFirst = expectedParts[0];
-  const expectedLast =
-    expectedParts[expectedParts.length - 1];
-
-  const receivedFirst = receivedParts[0];
-  const receivedLast =
-    receivedParts[receivedParts.length - 1];
-
-  return (
-    expectedFirst === receivedFirst &&
-    expectedLast === receivedLast
-  );
+  return holderNamesMatch(expectedName, receivedName).matched;
 }
 
 /* ============================================================
