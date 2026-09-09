@@ -142,7 +142,7 @@ export default function CameraCapture({ onCapture }) {
   };
 
   return (
-    <div className="camera-wrapper">
+    <div className={`camera-wrapper ${isCameraOn ? "col-span-2" : ""}`}>
       <input
         ref={nativeCameraInputRef}
         type="file"
@@ -158,7 +158,7 @@ export default function CameraCapture({ onCapture }) {
           type="button"
           onClick={startCamera}
           disabled={isStarting}
-          className="flex w-full items-center justify-center gap-2 rounded-xl border border-black/10 bg-white px-4 py-3 font-semibold text-ink transition hover:border-seal hover:text-sealDark disabled:cursor-wait disabled:opacity-60 dark:border-white/10 dark:bg-white/5 dark:text-white"
+          className="flex min-h-[46px] w-full items-center justify-center gap-2 rounded-xl border border-black/10 bg-white px-3 py-2 text-sm font-semibold text-ink transition hover:border-seal hover:text-sealDark disabled:cursor-wait disabled:opacity-60 dark:border-white/10 dark:bg-white/5 dark:text-white"
         >
           <Camera size={17} aria-hidden="true" />
           {isStarting ? "Starting camera..." : "Use camera"}

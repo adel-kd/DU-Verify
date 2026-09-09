@@ -9,8 +9,6 @@ import {
   AlertTriangle,
   ArrowRight,
   Check,
-  FileCheck2,
-  ReceiptText,
   ScanLine,
   UploadCloud,
 } from "lucide-react";
@@ -559,6 +557,11 @@ export default function Verify() {
     setAccountsError,
   ] = useState("");
 
+  const [
+    inspectedProvider,
+    setInspectedProvider,
+  ] = useState("");
+
   /*
    * Provider selected for verification.
    */
@@ -624,6 +627,12 @@ export default function Verify() {
 
 
   const fileInput =
+    useRef(null);
+
+  const providerPressTimer =
+    useRef(null);
+
+  const providerRevealTimer =
     useRef(null);
 
 
@@ -729,6 +738,11 @@ export default function Verify() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => () => {
+    clearTimeout(providerPressTimer.current);
+    clearTimeout(providerRevealTimer.current);
   }, []);
 
   const configuredProviders =
@@ -894,16 +908,35 @@ export default function Verify() {
     setError("");
   }
 
+  function revealProviderAccounts(
+    provider,
+    temporary = false
+  ) {
+    clearTimeout(providerRevealTimer.current);
+    setInspectedProvider(provider);
 
-  function copyAccount(accountNumber) {
-    if (
-      navigator.clipboard?.writeText &&
-      accountNumber
-    ) {
-      navigator.clipboard.writeText(
-        accountNumber
+    if (temporary) {
+      providerRevealTimer.current = setTimeout(
+        () => setInspectedProvider(""),
+        3500
       );
     }
+  }
+
+  function startProviderLongPress(provider, pointerType) {
+    if (pointerType === "mouse") {
+      return;
+    }
+
+    clearTimeout(providerPressTimer.current);
+    providerPressTimer.current = setTimeout(
+      () => revealProviderAccounts(provider, true),
+      450
+    );
+  }
+
+  function cancelProviderLongPress() {
+    clearTimeout(providerPressTimer.current);
   }
 
 
@@ -1111,6 +1144,14 @@ export default function Verify() {
       currentTime
     );
 
+  const inspectedAccounts =
+    inspectedProvider
+      ? paymentAccounts.filter(
+          (account) =>
+            account.provider === inspectedProvider
+        )
+      : [];
+
 
   /* ==========================================================
      RENDER
@@ -1126,7 +1167,7 @@ export default function Verify() {
       />
 
 
-      <main className="mx-auto w-full max-w-6xl flex-1 space-y-5 px-4 py-6 sm:px-6 sm:py-9 lg:px-8">
+      <main className="mx-auto w-full max-w-4xl flex-1 space-y-3 px-3 py-3 sm:px-6 sm:py-5">
 
         {/* Email verification gate */}
         <UnverifiedNotice />
@@ -1153,46 +1194,17 @@ export default function Verify() {
             </div>
           )}
 
-        <header className="max-w-2xl pt-2">
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-sealDark dark:text-seal">
-              Payment desk
-            </p>
-            {user?.role === "staff" && <InstallStaffApp />}
-          </div>
-          <h1 className="font-display text-3xl font-semibold tracking-[-0.045em] text-ink sm:text-4xl dark:text-white">
-            Verify a payment with confidence.
+        <header className="flex items-center justify-between gap-3 py-1">
+          <h1 className="font-display text-2xl font-semibold tracking-[-0.04em] text-ink sm:text-3xl dark:text-white">
+            Verify payment
           </h1>
-          <p className="mt-3 max-w-xl text-sm leading-6 text-ink/55 dark:text-white/55">
-            Add the details you have. A receipt image or transaction reference is enough to begin.
-          </p>
+          {user?.role === "staff" && <InstallStaffApp />}
         </header>
 
-        <div className="grid items-start gap-5 lg:grid-cols-[280px_minmax(0,1fr)] lg:gap-7">
-          <aside className="hidden rounded-[24px] border border-black/[0.07] bg-[#15221d] p-6 text-white shadow-[0_24px_60px_-40px_rgba(0,0,0,0.8)] lg:sticky lg:top-24 lg:block">
-            <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-seal">A quick, safe check</p>
-            <h2 className="mt-2 font-display text-xl font-semibold tracking-tight">Three details. One clear answer.</h2>
-            <ol className="mt-6 space-y-5">
-              <li className="flex gap-3">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10 text-seal"><ReceiptText size={16} aria-hidden="true" /></span>
-                <span><strong className="block text-sm font-semibold">Choose the source</strong><span className="mt-0.5 block text-xs leading-5 text-white/55">Tap the logo shown on the receipt.</span></span>
-              </li>
-              <li className="flex gap-3">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10 text-seal"><ScanLine size={16} aria-hidden="true" /></span>
-                <span><strong className="block text-sm font-semibold">Add the receipt</strong><span className="mt-0.5 block text-xs leading-5 text-white/55">Upload, photograph, or enter its reference.</span></span>
-              </li>
-              <li className="flex gap-3">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10 text-seal"><FileCheck2 size={16} aria-hidden="true" /></span>
-                <span><strong className="block text-sm font-semibold">Review the answer</strong><span className="mt-0.5 block text-xs leading-5 text-white/55">Match the amount, names, and payment time.</span></span>
-              </li>
-            </ol>
-            <div className="mt-6 border-t border-white/10 pt-4 text-xs leading-5 text-white/45">
-              Each completed check costs 1 DU PT. Unavailable-provider checks are refunded automatically.
-            </div>
-          </aside>
+        <div className="mx-auto w-full max-w-3xl">
 
-          <div className="min-w-0 space-y-4">
-            <div className="workflow-card overflow-visible rounded-[28px]">
+          <div className="min-w-0 space-y-3">
+            <div className="workflow-card compact-verify-card overflow-visible rounded-[24px]">
 
 
         {/* =====================================================
@@ -1206,13 +1218,7 @@ export default function Verify() {
 
         <section className="workflow-step">
 
-          <span className="field-label">01 / Receipt source</span>
-          <h2 className="mt-1.5 font-display text-lg font-semibold tracking-tight text-ink dark:text-white">Which logo is on the receipt?</h2>
-
-
-          <p className="mt-1.5 text-xs leading-5 text-ink/45 dark:text-white/45">
-            Choose the app or bank that issued the receipt. It can be different from the receiving bank.
-          </p>
+          <span className="field-label">01 / Provider</span>
 
 
           {/* =================================================
@@ -1272,8 +1278,8 @@ export default function Verify() {
           {!accountsLoading &&
             paymentAccounts.length > 0 && (
 
-              <>
-                <div className="mt-4 flex flex-wrap gap-3" role="radiogroup" aria-label="Receipt source">
+              <div className="mt-2 rounded-2xl border border-black/[0.08] bg-[#f7f8f4] p-2 dark:border-white/10 dark:bg-black/20">
+                <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Receipt source">
                   {configuredProviders.map((provider) => {
                     const isSelected = bank === provider;
 
@@ -1286,15 +1292,26 @@ export default function Verify() {
                         aria-label={providerLabel(provider)}
                         title={providerLabel(provider)}
                         onClick={() => selectProvider(provider)}
-                        className={`relative flex h-[72px] w-[92px] items-center justify-center rounded-2xl border transition duration-200 ${isSelected
+                        onMouseEnter={() => revealProviderAccounts(provider)}
+                        onMouseLeave={() => setInspectedProvider("")}
+                        onFocus={() => revealProviderAccounts(provider)}
+                        onBlur={() => setInspectedProvider("")}
+                        onPointerDown={(event) => startProviderLongPress(provider, event.pointerType)}
+                        onPointerUp={cancelProviderLongPress}
+                        onPointerCancel={cancelProviderLongPress}
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          revealProviderAccounts(provider, true);
+                        }}
+                        className={`relative flex h-[58px] min-w-[76px] flex-1 basis-[76px] touch-manipulation items-center justify-center rounded-xl border transition duration-200 sm:max-w-[92px] ${isSelected
                           ? "border-seal bg-seal/10 shadow-[0_10px_24px_-16px_rgba(18,167,131,0.9)] ring-2 ring-seal/20"
-                          : "border-black/10 bg-[#f7f8f4] text-ink/70 hover:-translate-y-0.5 hover:border-seal/50 hover:bg-white dark:border-white/10 dark:bg-white/5"
+                          : "border-black/10 bg-white text-ink/70 hover:-translate-y-0.5 hover:border-seal/50 dark:border-white/10 dark:bg-white/5"
                         }`}
                       >
-                        <ProviderBadge provider={provider} showLabel={false} plain iconSize="h-12 w-[72px]" />
+                        <ProviderBadge provider={provider} showLabel={false} plain iconSize="h-9 w-[62px]" />
                         {isSelected && (
-                          <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-white bg-seal text-white dark:border-[#17211d]">
-                            <Check size={11} strokeWidth={3} aria-hidden="true" />
+                          <span className="absolute right-1 top-1 flex h-4 w-4 items-center justify-center rounded-full bg-seal text-white">
+                            <Check size={9} strokeWidth={3} aria-hidden="true" />
                           </span>
                         )}
                       </button>
@@ -1302,27 +1319,17 @@ export default function Verify() {
                   })}
                 </div>
 
-                <div className="mt-5 border-t border-black/[0.07] pt-4 dark:border-white/10">
-                  <p className="field-label">Merchant receiving accounts</p>
-                  <p className="mt-1 text-xs leading-5 text-ink/45 dark:text-white/45">
-                    The confirmed receiver must match one of these accounts, even when the receipt comes from another provider.
-                  </p>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    {paymentAccounts.map((account) => (
-                      <div key={account._id} className="flex items-center gap-3 rounded-xl border border-black/10 bg-[#f7f8f4] p-3 dark:border-white/10 dark:bg-black/20">
-                        <ProviderBadge provider={account.provider} showLabel={false} plain iconSize="h-10 w-14" />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-mono text-sm text-ink dark:text-paper">{account.accountNumber}</p>
-                          <p className="truncate text-xs text-ink/45 dark:text-mist">{account.accountHolderName}</p>
-                        </div>
-                        <button type="button" onClick={() => copyAccount(account.accountNumber)} className="shrink-0 rounded-lg border border-seal/25 px-2.5 py-1 text-xs font-semibold text-sealDark transition hover:bg-seal/10 dark:text-seal">
-                          Copy
-                        </button>
+                {inspectedAccounts.length > 0 && (
+                  <div className="mt-2 grid gap-1 border-t border-black/[0.07] px-2 pt-2 dark:border-white/10" aria-live="polite">
+                    {inspectedAccounts.map((account) => (
+                      <div key={account._id} className="flex min-w-0 items-center justify-between gap-3">
+                        <span className="truncate font-mono text-xs font-semibold text-ink dark:text-paper">{account.accountNumber}</span>
+                        <span className="truncate text-right text-xs text-ink/50 dark:text-mist">{account.accountHolderName}</span>
                       </div>
                     ))}
                   </div>
-                </div>
-              </>
+                )}
+              </div>
 
             )}
 
@@ -1363,11 +1370,11 @@ export default function Verify() {
 
             ) : (
 
-              <p className="flex items-start gap-2 text-xs leading-5 text-ink/55 dark:text-white/55">
+              <p className="flex items-start gap-2 text-xs leading-4 text-ink/55 dark:text-white/55">
 
                 <ScanLine className="mt-0.5 shrink-0 text-seal" size={16} aria-hidden="true" />
 
-                <span>For CBE, only a mobile-banking receipt QR that contains the official receipt link can be verified. USSD screenshots and old reference numbers are not accepted.</span>
+                <span>CBE requires the mobile-banking receipt QR. USSD screenshots and old references are not accepted.</span>
 
               </p>
 
@@ -1406,14 +1413,6 @@ export default function Verify() {
             />
 
 
-            <p className="text-xs text-ink/40 dark:text-mist mt-1">
-
-              CBE Birr needs the
-              payer's phone number
-              to look up the receipt.
-
-            </p>
-
           </section>
 
         )}
@@ -1425,27 +1424,43 @@ export default function Verify() {
 
         <section className="workflow-step">
 
-          <span className="field-label">02 / Amount</span>
-          <div className="mt-1.5 flex items-baseline justify-between gap-3">
-            <label htmlFor="expected-amount" className="font-display text-lg font-semibold tracking-tight text-ink dark:text-white">Expected amount</label>
-            <span className="text-xs text-ink/40 dark:text-white/40">Optional</span>
+          <span className="field-label">02 / Details</span>
+          <div className="mt-2 grid grid-cols-[minmax(92px,0.7fr)_minmax(0,1.6fr)] gap-2">
+            <label className="min-w-0">
+              <span className="block truncate text-xs text-ink/50 dark:text-white/50">Amount (optional)</span>
+              <input
+                id="expected-amount"
+                type="number"
+                step="0.01"
+                min="0"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0.00"
+                className="field-control mt-1 px-3 py-2.5 font-display font-semibold tabular-nums"
+              />
+            </label>
+
+            <label className="min-w-0">
+              <span className="block truncate text-xs text-ink/50 dark:text-white/50">
+                {bank === "CBE" && cbeQrDetected ? "CBE receipt link" : "Transaction reference"}
+              </span>
+              <input
+                type="text"
+                value={transactionRef}
+                onChange={(e) => {
+                  setTransactionRef(e.target.value);
+                  setCbeQrDetected(false);
+                  setCbeQrValue("");
+                  setResult(null);
+                  setError("");
+                }}
+                placeholder={bank === "CBE" ? "Full receipt link" : "Reference number"}
+                autoComplete="off"
+                spellCheck="false"
+                className="field-control mt-1 px-3 py-2.5 font-mono text-sm tracking-wide"
+              />
+            </label>
           </div>
-
-
-          <input
-            id="expected-amount"
-            type="number"
-            step="0.01"
-            min="0"
-            value={amount}
-            onChange={(e) =>
-              setAmount(
-                e.target.value
-              )
-            }
-            placeholder="0.00"
-            className="field-control mt-3 font-display text-xl font-semibold tabular-nums"
-          />
 
         </section>
 
@@ -1457,44 +1472,24 @@ export default function Verify() {
         <section className="workflow-step">
 
           <span className="field-label">03 / Receipt</span>
-          <div className="mt-1.5 flex items-baseline justify-between gap-3">
-            <h2 className="font-display text-lg font-semibold tracking-tight text-ink dark:text-white">Add the payment receipt</h2>
-            <span className="text-xs text-ink/40 dark:text-white/40">{bank === "CBE" ? "Mobile-banking receipt QR" : "Photo or screenshot"}</span>
-          </div>
-
-
-          <button
-            type="button"
-            onClick={() =>
-              fileInput.current?.click()
-            }
-            className="group mt-3 flex min-h-40 w-full flex-col items-center justify-center gap-2 overflow-hidden rounded-2xl border border-dashed border-black/20 bg-[#f7f8f4] px-4 py-7 text-ink/55 transition hover:border-seal hover:bg-seal/[0.04] hover:text-sealDark dark:border-white/15 dark:bg-black/20 dark:text-white/55"
-          >
-
-            {preview ? (
-
-              <img
-                src={preview}
-                alt="Receipt preview"
-                className="max-h-56 rounded-xl object-contain shadow-sm"
-              />
-
-            ) : (
-
-              <>
-                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-sealDark shadow-sm transition-transform group-hover:-translate-y-0.5 dark:bg-white/10 dark:text-seal">
-                  <UploadCloud size={20} aria-hidden="true" />
-                </span>
-
-                <span className="font-semibold text-ink dark:text-white">
-                  Add from device
-                </span>
-                <span className="text-xs text-ink/40 dark:text-white/40">{bank === "CBE" ? "Choose a receipt image with its QR code" : "Choose a photo or screenshot"}</span>
-              </>
-
-            )}
-
-          </button>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => fileInput.current?.click()}
+              className="group flex min-h-[46px] items-center justify-center gap-2 overflow-hidden rounded-xl border border-dashed border-black/20 bg-[#f7f8f4] px-3 py-2 text-sm font-semibold text-ink transition hover:border-seal hover:bg-seal/[0.04] dark:border-white/15 dark:bg-black/20 dark:text-white"
+            >
+              {preview ? (
+                <>
+                  <img src={preview} alt="Receipt preview" className="h-8 w-8 rounded-lg object-cover" />
+                  <span>Change receipt</span>
+                </>
+              ) : (
+                <>
+                  <UploadCloud className="text-seal" size={17} aria-hidden="true" />
+                  <span>Add from device</span>
+                </>
+              )}
+            </button>
 
 
           <input
@@ -1507,94 +1502,10 @@ export default function Verify() {
           />
 
 
-          <div className="mt-3">
-
             <CameraCapture
               onCapture={handleFile}
             />
-
           </div>
-
-        </section>
-
-
-        {/* =====================================================
-            TRANSACTION REFERENCE
-        ====================================================== */}
-
-        <section className="workflow-step">
-
-          <label className="field-label">
-
-            {bank === "CBE" &&
-              cbeQrDetected
-              ? "CBE receipt link"
-              : "Transaction reference"}
-
-          </label>
-
-
-          <input
-            type="text"
-            value={transactionRef}
-            onChange={(e) => {
-
-              setTransactionRef(
-                e.target.value
-              );
-
-              /*
-               * Manual editing means this is
-               * no longer an untouched QR result.
-               */
-              setCbeQrDetected(false);
-              setCbeQrValue("");
-
-              setResult(null);
-              setError("");
-
-            }}
-            placeholder={
-              bank === "CBE"
-                ? "Paste full CBE receipt link"
-                : "Enter reference number manually"
-            }
-            autoComplete="off"
-            spellCheck="false"
-            className="field-control mt-2 font-mono text-sm tracking-wide"
-          />
-
-
-          <p className="text-xs text-ink/40 dark:text-mist mt-1">
-
-            {bank === "CBE"
-              ? "Paste the complete CBE receipt link or upload a mobile-banking receipt whose QR contains that link."
-              : "If the camera or OCR cannot read the receipt, enter the transaction reference manually."}
-
-          </p>
-
-
-          {transactionRef.trim() && (
-
-            <button
-              type="button"
-              onClick={() => {
-
-                setTransactionRef("");
-
-                setCbeQrDetected(
-                  false
-                );
-
-                setCbeQrValue("");
-
-              }}
-              className="text-xs text-alarm/70 hover:text-alarm mt-2"
-            >
-              Clear reference
-            </button>
-
-          )}
 
         </section>
 
@@ -1603,12 +1514,12 @@ export default function Verify() {
             VERIFY BUTTON
         ====================================================== */}
 
-        <div className="px-5 py-5 sm:px-7 sm:py-6">
+        <div className="px-4 py-3 sm:px-5 sm:py-4">
           <button
             type="button"
             onClick={handleVerify}
             disabled={!canVerify}
-            className="group flex w-full items-center justify-center gap-2 rounded-xl bg-[#15221d] px-4 py-3.5 font-semibold text-white shadow-[0_14px_28px_-18px_rgba(16,34,27,0.9)] transition hover:bg-[#0d1914] disabled:cursor-not-allowed disabled:opacity-35 dark:bg-seal dark:text-[#10201a] dark:hover:bg-seal/90"
+            className="group flex w-full items-center justify-center gap-2 rounded-xl bg-[#15221d] px-4 py-3 font-semibold text-white shadow-[0_14px_28px_-18px_rgba(16,34,27,0.9)] transition hover:bg-[#0d1914] disabled:cursor-not-allowed disabled:opacity-35 dark:bg-seal dark:text-[#10201a] dark:hover:bg-seal/90"
           >
             {loading ? (
               <>
@@ -1622,7 +1533,6 @@ export default function Verify() {
               </>
             )}
           </button>
-          <p className="mt-2.5 text-center text-[11px] text-ink/40 dark:text-white/40">The receipt is checked against the payment network, not the screenshot alone.</p>
         </div>
 
             </div>
